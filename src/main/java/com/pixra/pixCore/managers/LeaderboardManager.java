@@ -29,7 +29,7 @@ public class LeaderboardManager {
         loadData();
         checkResets();
     }
-
+    
     public void reload() {
         loadData();
         checkResets();
@@ -49,7 +49,7 @@ public class LeaderboardManager {
             }
         }
         dataConfig = YamlConfiguration.loadConfiguration(dataFile);
-
+        
         currentDailyDate = dataConfig.getString("reset-tracking.daily", LocalDate.now().toString());
         currentMonthlyDate = dataConfig.getString("reset-tracking.monthly", YearMonth.now().toString());
     }
@@ -70,19 +70,19 @@ public class LeaderboardManager {
 
         boolean changed = false;
 
+        // Cek Reset Harian: Kosongkan semua data Winstreak hari ini
         if (!today.toString().equals(currentDailyDate)) {
-            dataConfig.set("stats.daily", null);
-            dataConfig.set("stats.current_daily", null);
+            dataConfig.set("stats.daily", null);           
             currentDailyDate = today.toString();
-            plugin.getLogger().info("Daily Winstreak Leaderboard & Current Streaks have been reset.");
+            plugin.getLogger().info("Daily Winstreak Leaderboard has been reset.");
             changed = true;
         }
 
+        // Cek Reset Bulanan: Kosongkan semua data Winstreak bulan ini
         if (!thisMonth.toString().equals(currentMonthlyDate)) {
-            dataConfig.set("stats.monthly", null);
-            dataConfig.set("stats.current_monthly", null);
+            dataConfig.set("stats.monthly", null);         
             currentMonthlyDate = thisMonth.toString();
-            plugin.getLogger().info("Monthly Winstreak Leaderboard & Current Streaks have been reset.");
+            plugin.getLogger().info("Monthly Winstreak Leaderboard has been reset.");
             changed = true;
         }
 
@@ -90,32 +90,21 @@ public class LeaderboardManager {
     }
 
     public void addWin(UUID playerUUID, String playerName, String kitName) {
-        checkResets();
+        checkResets(); // Pastikan data tidak tertinggal saat pergantian hari
 
         if (kitName == null || kitName.isEmpty()) return;
         kitName = ChatColor.stripColor(kitName).toLowerCase();
 
+        // Update nama player di database
         dataConfig.set("names." + playerUUID.toString(), playerName);
 
-        String currentDailyPath = "stats.current_daily." + kitName + "." + playerUUID.toString();
-        int currentDaily = dataConfig.getInt(currentDailyPath, 0) + 1;
-        dataConfig.set(currentDailyPath, currentDaily);
-
+        // --- TAMBAH DAILY STREAK BERJALAN ---
         String dailyPath = "stats.daily." + kitName + "." + playerUUID.toString();
-        int dailyBest = dataConfig.getInt(dailyPath, 0);
-        if (currentDaily > dailyBest) {
-            dataConfig.set(dailyPath, currentDaily);
-        }
+        dataConfig.set(dailyPath, dataConfig.getInt(dailyPath, 0) + 1);
 
-        String currentMonthlyPath = "stats.current_monthly." + kitName + "." + playerUUID.toString();
-        int currentMonthly = dataConfig.getInt(currentMonthlyPath, 0) + 1;
-        dataConfig.set(currentMonthlyPath, currentMonthly);
-
+        // --- TAMBAH MONTHLY STREAK BERJALAN ---
         String monthlyPath = "stats.monthly." + kitName + "." + playerUUID.toString();
-        int monthlyBest = dataConfig.getInt(monthlyPath, 0);
-        if (currentMonthly > monthlyBest) {
-            dataConfig.set(monthlyPath, currentMonthly);
-        }
+        dataConfig.set(monthlyPath, dataConfig.getInt(monthlyPath, 0) + 1);
 
         saveData();
     }
@@ -125,19 +114,20 @@ public class LeaderboardManager {
 
         if (kitName == null || kitName.isEmpty()) return;
         kitName = ChatColor.stripColor(kitName).toLowerCase();
-
-        String currentDailyPath = "stats.current_daily." + kitName + "." + playerUUID.toString();
-        String currentMonthlyPath = "stats.current_monthly." + kitName + "." + playerUUID.toString();
-
-        dataConfig.set(currentDailyPath, 0);
-        dataConfig.set(currentMonthlyPath, 0);
+        
+        // --- PUTUS STREAK & LENYAP DARI LEADERBOARD ---
+        // Karena sistem yang Anda inginkan adalah real-time "Current Streak", 
+        // kita paksa skor mereka menjadi 0 saat mereka kalah.
+        dataConfig.set("stats.daily." + kitName + "." + playerUUID.toString(), 0);
+        dataConfig.set("stats.monthly." + kitName + "." + playerUUID.toString(), 0);
 
         saveData();
     }
 
+    // Mengambil Top 5 Data
     public List<Map.Entry<String, Integer>> getTop5(String period, String kitName) {
-        checkResets();
-
+        checkResets(); 
+        
         kitName = ChatColor.stripColor(kitName).toLowerCase();
         ConfigurationSection section = dataConfig.getConfigurationSection("stats." + period + "." + kitName);
         if (section == null) return new ArrayList<>();
@@ -145,18 +135,21 @@ public class LeaderboardManager {
         Map<String, Integer> scores = new HashMap<>();
         for (String uuidStr : section.getKeys(false)) {
             int score = section.getInt(uuidStr);
-            if (score > 0) {
+            // FILTER: Hanya tampilkan pemain yang memiliki Streak berjalan (>0).
+            // Jika dia kalah (skornya 0), dia akan diabaikan (lenyap dari papan).
+            if (score > 0) { 
                 String name = dataConfig.getString("names." + uuidStr, "Unknown");
                 scores.put(name, score);
             }
         }
 
         return scores.entrySet().stream()
-                .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                .sorted((a, b) -> b.getValue().compareTo(a.getValue())) // Sort descending (Terbesar ke terkecil)
                 .limit(5)
                 .collect(Collectors.toList());
     }
 
+    // Format Countdown Waktu (Termasuk Detik agar tidak beku)
     public String getDailyCountdown() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime endOfDay = now.toLocalDate().atTime(23, 59, 59);
