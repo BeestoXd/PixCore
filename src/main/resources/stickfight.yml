@@ -1,0 +1,10 @@
+stickfight-mechanics:
+  straight-knockback:
+    enabled: true
+    kits:
+      - "stickfight"
+      - "stickfightelo"
+    horizontal: 0.85
+    vertical: 0.40
+    vertical-limit: 0.45
+    sprint-multiplier: 1.20

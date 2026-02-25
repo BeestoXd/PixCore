@@ -1,0 +1,31 @@
+# ========================================== #
+#     Hit Action Bar Configuration           #
+# ========================================== #
+
+# Mengaktifkan atau menonaktifkan fitur action bar saat memukul lawan
+enabled: true
+
+# Warna kustom untuk nama pemain (<player>)
+player-name-color: "&e"
+
+# Format pesan action bar
+# Placeholders:
+# <player>     = Nama pemain yang dipukul (menggunakan warna player-name-color di atas)
+# <health_bar> = Visual bar ikon hati (berubah sesuai sisa darah)
+# <health>     = Sisa darah dalam bentuk angka
+message: "<player> &r<health_bar>"
+
+# Pengaturan Ikon Hati (Heart Bar)
+heart-symbol: "❤"
+# Warna untuk darah penuh (2 HP = 1 Hati)
+full-heart-color: "&c"
+# Warna untuk setengah darah (1 HP = Setengah Hati)
+half-heart-color: "&d"
+# Warna untuk darah yang hilang (Hati kosong/hitam)
+empty-heart-color: "&0"
+# Warna untuk darah tambahan/absorption (misal dari Golden Apple)
+absorption-heart-color: "&e"
+
+# Daftar Kit StrikePractice yang mengaktifkan fitur ini.
+# Biarkan kosong "[]" jika fitur ini berlaku untuk SEMUA kit.
+allowed-kits: []

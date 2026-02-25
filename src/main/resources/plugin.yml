@@ -1,0 +1,13 @@
+name: PixCore
+version: '1.0'
+main: com.pixra.pixCore.PixCore
+api-version: '1.21'
+softdepend: [StrikePractice, PlaceholderAPI]
+commands:
+  pix:
+    description: reload plugin
+    usage: /pix reload
+    permission: pixcore.admin
+  savelayout:
+    description: Save custom layouts manually created while in battle.
+    aliases: [ layout, savekit ]

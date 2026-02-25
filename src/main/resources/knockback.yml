@@ -1,0 +1,43 @@
+enabled: true
+use-default-if-missing: true
+
+default:
+  friction: 2.0
+  horizontal: 0.39
+  vertical: 0.34
+  vertical-limit: 0.38
+  sprint-multiplier: 1.15
+  horizontal-cap: 0.62
+
+kits:
+  Nodebuff:
+    friction: 2.0
+    horizontal: 0.395
+    vertical: 0.34
+    vertical-limit: 0.38
+    sprint-multiplier: 1.18
+    horizontal-cap: 0.62
+
+  Sumo:
+    friction: 2.0
+    horizontal: 0.37
+    vertical: 0.40
+    vertical-limit: 0.45
+    sprint-multiplier: 1.08
+    horizontal-cap: 0.65
+
+  Boxing:
+    friction: 2.0
+    horizontal: 0.41
+    vertical: 0.32
+    vertical-limit: 0.35
+    sprint-multiplier: 1.20
+    horizontal-cap: 0.60
+
+  BedFight:
+    friction: 2.0
+    horizontal: 0.385
+    vertical: 0.35
+    vertical-limit: 0.40
+    sprint-multiplier: 1.12
+    horizontal-cap: 0.62

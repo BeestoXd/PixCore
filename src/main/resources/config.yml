@@ -1,0 +1,200 @@
+messages:
+  victory:
+    title: "&e&lVICTORY!"
+    subtitle: "&e<player> &fwon the Match!"
+  defeat:
+    title: "&c&lDEFEAT!"
+    subtitle: "&c<opponent> &fwon this Match!"
+  death:
+    title: "&cYOU DIED!"
+    subtitle-countdown: "&eRespawning in &d<seconds>s&e..."
+  bed-break-self: "&cYou can't break your own bed!"
+  block-place-denied: "&cYou cannot place blocks while respawning!"
+  block-break-denied-start: "&cYou cannot break blocks while the match is starting!"
+  build-limit-reached: "&cYou cannot place block at there!"
+  build-outside-arena: "&cYou cannot place block outside the arena!"
+  # --- DEATH MESSAGES (Chat) ---
+  # <victim> = Nama korban (sudah berwarna sesuai tim)
+  # <killer> = Nama pembunuh (sudah berwarna sesuai tim)
+  death-void-self: "<victim> &efell into the void!"
+  death-void-kill: "<victim> &ewas hit into the void by <killer>"
+  death-kill: "<victim> &ewas killed by <killer>"
+  # --- BED DESTRUCTION MESSAGE (Chat) ---
+  # <player>      = Nama player yang menghancurkan bed
+  # <color>       = Kode warna tim player (misal &c atau &9)
+  # <bed_color>   = Kode warna bed lawan yang dihancurkan (misal &c atau &9)
+  # <enemy_team>  = Nama lengkap tim lawan (misal &cRed)
+  # <player_team> = Nama lengkap tim player (misal &9Blue)
+  # Contoh di bawah: "Red Bed was destroyed by BluePlayerName" (jika Player Blue menghancurkan Red Bed)
+  bed-destroy: "&d&lBED DESTRUCTION >> &e<enemy_team> bed &ewas destroyed by <color><player>"
+  bed-destroyed-title: "&c&lBED DESTROYED!"
+  bed-destroyed-subtitle: "&eYou will no longer respawn!"
+
+settings:
+  default-respawn-time: 3
+  respawn-countdown-interval: 20
+  void-y-trigger: 83
+  spawn-protection-break:
+    enabled: true
+    kits:
+      - "bedfight"
+      - "thebridge"
+    delay-before-break: 1 # sebelum animasi mulai (0 = langsung)
+    animation-tick-interval: 2 # speed break (semakin kecil semakin cepat)
+    play-sound: true
+  block-disappear:
+    enabled: true
+    return-item: true
+    kits:
+      - "battlerush"
+      - "topfight"
+      - "tntsumo"
+      - "stickfight"
+    delay-before-break: 1 # sebelum animasi mulai dan blok break
+    animation-tick-interval: 5 # speed animation break (semakin kecil semakin cepat)
+    play-sound: true
+  build-restrictions: # corner
+    enabled: false
+    max-build-y: 100
+    check-arena-borders: false # jangan lupa di ubah jadi true
+    kits:
+      - "thebridge"
+      - "bedfight"
+  respawn-sound: "ORB_PICKUP"
+  death: # disable respawn di dalam arena/kits (WAJIB DISINI JIKA TIDAK MAKA AKAN RESPAWN DENGAN SENDIRINYA)
+    disabled-kits:
+      - thebridge
+      - thebridgeelo
+      - sumo
+      - sumoelo
+      - uhc
+      - uhcelo
+      - tntsumo
+      - tntsumoelo
+      - nodebuff
+      - nodebuffelo
+      - boxing
+      - boxingelo
+      - pearlfight
+      - pearlfightelo
+      - skywars
+      - skywarselo
+      - classic
+      - classicelo
+      - finaluhc
+      - finaluhcelo
+      - invaded
+      - invadedelo
+      - stickfight
+      - stickfightelo
+      - topfight
+      - topfightelo
+      - hcf
+      - hcfelo
+      - spleef
+      - spleefelo
+      - combo
+      - comboelo
+      - archer
+      - archerelo
+      - soup
+      - soupelo
+      - sg
+      - sgelo
+      - axe
+      - axeelo
+      - debuff
+      - debuffelo
+    instant-respawn-kits:
+      - thebridge
+      - thebridgeelo
+  start-countdown: # starting
+    enabled: true
+    sounds:
+      enabled: true
+      volume: 1.0
+      pitch: 1.0
+      per-second:
+        "5": NOTE_STICKS
+        "4": NOTE_STICKS
+        "3": NOTE_STICKS
+        "2": NOTE_STICKS
+        "1": NOTE_STICKS
+      start-sound: FIREWORK_BLAST
+    titles:
+      6: ""
+      5: "&e5"    # Hijau
+      4: "&e4"    # Kuning
+      3: "&c3"    # Emas/Orange
+      2: "&c2"    # Merah Muda
+      1: "&c1"    # Merah Tua
+    messages:
+      "5": "&a5"
+      "4": "&a4"
+      "3": "&a3"
+      "2": "&a2"
+      "1": "&a1"
+    start-message: "&aMatch Started!"
+  respawn: # respawn
+    chat-countdown:
+      enabled: true
+      kits:
+        - bedfight
+        - fireballfight
+      format: "&eRespawning in &r<number>"
+      numbers:
+        "3": "&c3"
+        "2": "&62"
+        "1": "&a1"
+  bow-cooldown:
+    enabled: true
+    seconds: 5 # ONLY SEC
+    kits:
+      - thebridge
+      - thebridgeelo
+  bow-boost:
+    enabled: true
+    horizontal: 1.35
+    vertical: 0.42
+  hit-reward:
+    enabled: true
+    kits:
+      tntsumo:
+        material: TNT
+        amount: 1
+        max-amount: 10
+        name: "&6&lInsta-Boom TNT &7(Right Click)"
+        lore: [ ]
+        enchants:
+          DAMAGE_ALL: 1
+      tntsumoelo:
+        material: TNT
+        amount: 1
+        max-amount: 10
+        name: "&6&lInsta-Boom TNT &7(Right Click)"
+        enchants:
+          DAMAGE_ALL: 1
+  snow-break-mechanic:
+    enabled: true
+    kits:
+      - "Spleef"
+  tnt-mechanics:
+    prevent-self-knockback:
+      enabled: true
+      kits:
+        - "tntsumo"
+  block-replenish:
+    enabled: true
+    kits:
+      - "tntsumo"
+  item-mechanics:
+    unbreakable-tools: true
+    prevent-shears-drop: true
+    prevent-armor-removal:
+      enabled: true
+      kits:
+        - "bedfight"
+        - "fireballfight"
+  bed-restore-kits:
+    - "bedfight"
+    - "fireballfight"

@@ -1,0 +1,21 @@
+# ========================================== #
+#     Bow Hit Message Configuration          #
+# ========================================== #
+
+# Mengaktifkan atau menonaktifkan fitur pesan saat panah mengenai lawan
+enabled: true
+
+# Format pesan yang akan dikirim ke penembak
+# Placeholders:
+# <player>     = Nama pemain yang terkena panah
+# <total>      = Sisa darah (dalam satuan hati/hearts, misalnya 4.5)
+# <icon_heart> = Icon hati otomatis diubah ke ❤
+message: "&d<player> &eis now at &c<total> &4<icon_heart>"
+
+# Daftar Kit StrikePractice yang mengaktifkan fitur ini.
+# Biarkan kosong "[]" jika fitur ini berlaku untuk SEMUA kit.
+# Contoh jika ingin digunakan pada kit spesifik:
+# allowed-kits:
+#   - "Archer"
+#   - "Classic"
+allowed-kits: []

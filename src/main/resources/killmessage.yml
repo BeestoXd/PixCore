@@ -1,0 +1,31 @@
+# ========================================== #
+#     Kill Message Configuration             #
+# ========================================== #
+
+# Mengaktifkan atau menonaktifkan fitur pesan saat kill player
+enabled: true
+
+# Tipe tampilan: ACTION_BAR, TITLE, atau CHAT
+# - ACTION_BAR: Muncul tepat di atas hotbar (gui inventory) sesuai gambar Anda.
+# - TITLE: Muncul sebagai subtitle (tengah layar).
+# - CHAT: Muncul di chat seperti biasa.
+display-type: ACTION_BAR
+
+# Format pesan (mendukung warna kode &)
+# Placeholders:
+# <player> = Nama pemain yang dibunuh (warna akan otomatis berubah sesuai warna tim Red/Blue dari StrikePractice)
+message: "&c&lKILL! <player>"
+
+# Daftar Kit StrikePractice yang mengaktifkan fitur ini.
+# Biarkan kosong "[]" jika fitur ini berlaku untuk SEMUA kit.
+# Contoh:
+# allowed-kits:
+#   - "BedFight"
+#   - "TheBridge"
+allowed-kits:
+  - bedfight
+  - bedfightelo
+  - fireballfight
+  - fireballfightelo
+  - thebridge
+  - thebridgelo
