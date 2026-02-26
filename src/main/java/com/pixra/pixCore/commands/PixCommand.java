@@ -87,13 +87,44 @@ public class PixCommand implements CommandExecutor {
                     return true;
                 }
 
-                if (args.length < 3) {
-                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove> <kit_name>");
+                if (args.length < 2) {
+                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove|enable|disable> ...");
                     return true;
                 }
 
                 String action = args[1].toLowerCase();
+
+                if (action.equals("enable") || action.equals("disable")) {
+                    boolean enable = action.equals("enable");
+                    if (args.length == 2) {
+                        if (plugin.leaderboardManager != null) {
+                            plugin.leaderboardManager.setGlobalEnabled(enable);
+                            sender.sendMessage(ChatColor.GREEN + "[PixCore] Leaderboard (All Kits) globally " + (enable ? "enabled" : "disabled") + "!");
+                        }
+                    } else {
+                        String kitName = ChatColor.stripColor(args[2]).toLowerCase();
+                        if (plugin.leaderboardManager != null) {
+                            plugin.leaderboardManager.setKitEnabled(kitName, enable);
+                            sender.sendMessage(ChatColor.GREEN + "[PixCore] Leaderboard for kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' has been " + (enable ? "enabled" : "disabled") + "!");
+                        }
+                    }
+                    return true;
+                }
+
+                if (args.length < 4) {
+                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove> <kit_name> <pos>");
+                    return true;
+                }
+
                 String kitName = ChatColor.stripColor(args[2]).toLowerCase();
+
+                int pos;
+                try {
+                    pos = Integer.parseInt(args[3]);
+                } catch (NumberFormatException e) {
+                    sender.sendMessage(ChatColor.RED + "Posisi <pos> harus berupa angka! Contoh: 1");
+                    return true;
+                }
 
                 if (action.equals("add")) {
                     if (!(sender instanceof Player)) {
@@ -103,22 +134,22 @@ public class PixCommand implements CommandExecutor {
                     Player p = (Player) sender;
 
                     if (plugin.hologramManager != null) {
-                        plugin.hologramManager.createStaticHologram(p, kitName);
-                        p.sendMessage(ChatColor.GREEN + "[PixCore] Winstreak Leaderboard untuk kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' berhasil ditambahkan di depan pandanganmu!");
+                        plugin.hologramManager.createStaticHologram(p, kitName, pos);
+                        p.sendMessage(ChatColor.GREEN + "[PixCore] Winstreak Leaderboard untuk kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' di posisi " + pos + " berhasil ditambahkan!");
                     } else {
                         p.sendMessage(ChatColor.RED + "HologramManager belum terinisialisasi.");
                     }
 
                 } else if (action.equals("remove")) {
                     if (plugin.hologramManager != null) {
-                        plugin.hologramManager.removeStaticHologram(kitName);
-                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Winstreak Leaderboard untuk kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' berhasil dihapus!");
+                        plugin.hologramManager.removeStaticHologram(kitName, pos);
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Winstreak Leaderboard untuk kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' di posisi " + pos + " berhasil dihapus!");
                     } else {
                         sender.sendMessage(ChatColor.RED + "HologramManager belum terinisialisasi.");
                     }
 
                 } else {
-                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove> <kit_name>");
+                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove> <kit_name> <pos>");
                 }
                 return true;
             }
@@ -127,8 +158,10 @@ public class PixCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "=== PixCore Commands ===");
         sender.sendMessage(ChatColor.YELLOW + "/pix reload" + ChatColor.GRAY + " - Reload configurations");
         sender.sendMessage(ChatColor.YELLOW + "/pix bed" + ChatColor.GRAY + " - Get the custom Arena Bed Fixer");
-        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard add <kit>" + ChatColor.GRAY + " - Place Winstreak Hologram");
-        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard remove <kit>" + ChatColor.GRAY + " - Remove Winstreak Hologram");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard add <kit> <pos>" + ChatColor.GRAY + " - Place Hologram (e.g. 1)");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard remove <kit> <pos>" + ChatColor.GRAY + " - Remove Hologram");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard enable [kit]" + ChatColor.GRAY + " - Enable leaderboard");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard disable [kit]" + ChatColor.GRAY + " - Disable leaderboard");
         return true;
     }
 }

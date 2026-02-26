@@ -8,7 +8,6 @@ import org.bukkit.entity.Player;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 public class PixCorePlaceholders extends PlaceholderExpansion {
 
@@ -56,6 +55,7 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
         int aliveCount = 0;
         if (plugin.getMGetPlayersInFight() != null) {
             try {
+                @SuppressWarnings("unchecked")
                 List<Player> alivePlayers = (List<Player>) plugin.getMGetPlayersInFight().invoke(fight);
                 if (alivePlayers != null) {
                     for (Player p : alivePlayers) {
@@ -63,6 +63,7 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
                         if (!isTeam1 && plugin.getMPlayersAreTeammates() != null) {
                             isTeam1 = (boolean) plugin.getMPlayersAreTeammates().invoke(fight, p1, p);
                         } else if (!isTeam1 && plugin.getMGetTeammates() != null) {
+                            @SuppressWarnings("unchecked")
                             List<String> tms = (List<String>) plugin.getMGetTeammates().invoke(fight, p1);
                             if (tms != null && tms.contains(p.getName())) isTeam1 = true;
                         }
@@ -90,6 +91,7 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
             } catch (Exception ignored) {}
         } else if (!isTeam1 && plugin.getMGetTeammates() != null) {
             try {
+                @SuppressWarnings("unchecked")
                 List<String> tms = (List<String>) plugin.getMGetTeammates().invoke(fight, p1);
                 if (tms != null && tms.contains(player.getName())) isTeam1 = true;
             } catch (Exception ignored) {}
@@ -103,10 +105,16 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
         return "";
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public String onPlaceholderRequest(Player player, String identifier) {
         if (player == null || !plugin.isHooked()) return "";
+
+        if (identifier.equalsIgnoreCase("highest_winstreak")) {
+            if (plugin.leaderboardManager != null) {
+                return plugin.leaderboardManager.getHighestWinstreakString(player.getUniqueId());
+            }
+            return "0";
+        }
 
         boolean isEnded = plugin.getPlayerMatchResults().containsKey(player.getUniqueId());
 

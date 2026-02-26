@@ -756,17 +756,19 @@ public class PixCore extends JavaPlugin {
         lastDamageTime.remove(uid);
         bowCooldowns.remove(uid);
         killCountCooldown.remove(uid);
+
+        // PENTING: Bebaskan status frozen dan bersihkan fallback hologram jika ada
+        frozenPlayers.remove(uid);
+        if (this.hologramManager != null && Bukkit.getPlayer(uid) != null) {
+            this.hologramManager.removeHolograms(Bukkit.getPlayer(uid));
+        }
+
         if (isQuit) {
             deathMessageCooldowns.remove(uid);
             lastBroadcastMessage.remove(uid);
             lastBroadcastTime.remove(uid);
             arenaSpawnLocations.remove(uid);
             playerMatchKills.remove(uid);
-
-            // Hapus hologram fallback saat player quit agar tidak nyangkut
-            if (this.hologramManager != null && Bukkit.getPlayer(uid) != null) {
-                this.hologramManager.removeHolograms(Bukkit.getPlayer(uid));
-            }
         }
         if (respawnManager != null) {
             respawnManager.forceStop(Bukkit.getPlayer(uid));

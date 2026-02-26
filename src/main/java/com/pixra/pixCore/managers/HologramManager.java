@@ -5,6 +5,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.ArmorStand;
@@ -61,30 +62,33 @@ public class HologramManager {
         clearAllGhosts();
     }
 
-    public void createStaticHologram(Player player, String kitName) {
+    public void createStaticHologram(Player player, String kitName, int pos) {
         kitName = ChatColor.stripColor(kitName).toLowerCase();
+        String key = kitName + "_" + pos;
 
-        removeStaticHologram(kitName);
+        removeStaticHologram(kitName, pos);
 
         Location eyeLoc = player.getEyeLocation();
 
-        holoConfig.set("leaderboards." + kitName + ".world", eyeLoc.getWorld().getName());
-        holoConfig.set("leaderboards." + kitName + ".x", eyeLoc.getX());
-        holoConfig.set("leaderboards." + kitName + ".y", eyeLoc.getY());
-        holoConfig.set("leaderboards." + kitName + ".z", eyeLoc.getZ());
-        holoConfig.set("leaderboards." + kitName + ".yaw", eyeLoc.getYaw());
-        holoConfig.set("leaderboards." + kitName + ".pitch", eyeLoc.getPitch());
+        String path = "leaderboards." + kitName + "." + pos;
+        holoConfig.set(path + ".world", eyeLoc.getWorld().getName());
+        holoConfig.set(path + ".x", eyeLoc.getX());
+        holoConfig.set(path + ".y", eyeLoc.getY());
+        holoConfig.set(path + ".z", eyeLoc.getZ());
+        holoConfig.set(path + ".yaw", eyeLoc.getYaw());
+        holoConfig.set(path + ".pitch", eyeLoc.getPitch());
         saveHoloConfig();
 
-        previewTime.put(kitName, System.currentTimeMillis() + 10000);
-        player.sendMessage(ChatColor.GREEN + "[PixCore] Hologram berhasil disimpan! (Hologram ini hanya akan terlihat saat fase starting-countdown match berjalan). Preview 10 detik...");
-        spawnStaticHologram(kitName, eyeLoc);
+        previewTime.put(key, System.currentTimeMillis() + 10000);
+        player.sendMessage(ChatColor.GREEN + "[PixCore] Hologram berhasil disimpan! (Hanya akan terlihat saat fase starting-countdown match berjalan). Preview 10 detik...");
+        spawnStaticHologram(kitName, pos, eyeLoc);
     }
 
-    public void removeStaticHologram(String kitName) {
+    public void removeStaticHologram(String kitName, int pos) {
         kitName = ChatColor.stripColor(kitName).toLowerCase();
+        String key = kitName + "_" + pos;
 
-        String path = "leaderboards." + kitName;
+        String path = "leaderboards." + kitName + "." + pos;
         if (holoConfig.contains(path)) {
             World world = Bukkit.getWorld(holoConfig.getString(path + ".world"));
             if (world != null) {
@@ -97,13 +101,19 @@ public class HologramManager {
             }
         }
 
-        removeStaticHologramEntities(kitName);
+        removeStaticHologramEntities(key);
         holoConfig.set(path, null);
+
+        ConfigurationSection kitSection = holoConfig.getConfigurationSection("leaderboards." + kitName);
+        if (kitSection != null && kitSection.getKeys(false).isEmpty()) {
+            holoConfig.set("leaderboards." + kitName, null);
+        }
+
         saveHoloConfig();
     }
 
-    private void removeStaticHologramEntities(String kitName) {
-        List<ArmorStand> stands = staticHolograms.remove(kitName);
+    private void removeStaticHologramEntities(String key) {
+        List<ArmorStand> stands = staticHolograms.remove(key);
         if (stands != null) {
             for (ArmorStand stand : stands) {
                 if (stand != null && !stand.isDead()) stand.remove();
@@ -113,17 +123,23 @@ public class HologramManager {
 
     private void clearAllGhosts() {
         if (!holoConfig.contains("leaderboards")) return;
+
         for (String kitName : holoConfig.getConfigurationSection("leaderboards").getKeys(false)) {
-            String path = "leaderboards." + kitName;
-            World world = Bukkit.getWorld(holoConfig.getString(path + ".world"));
-            if (world == null) continue;
+            ConfigurationSection kitSection = holoConfig.getConfigurationSection("leaderboards." + kitName);
+            if (kitSection == null) continue;
 
-            double x = holoConfig.getDouble(path + ".x");
-            double y = holoConfig.getDouble(path + ".y");
-            double z = holoConfig.getDouble(path + ".z");
-            Location loc = new Location(world, x, y, z);
+            for (String posStr : kitSection.getKeys(false)) {
+                String path = "leaderboards." + kitName + "." + posStr;
+                World world = Bukkit.getWorld(holoConfig.getString(path + ".world"));
+                if (world == null) continue;
 
-            clearGhostHolograms(loc, 10.0);
+                double x = holoConfig.getDouble(path + ".x");
+                double y = holoConfig.getDouble(path + ".y");
+                double z = holoConfig.getDouble(path + ".z");
+                Location loc = new Location(world, x, y, z);
+
+                clearGhostHolograms(loc, 10.0);
+            }
         }
     }
 
@@ -152,7 +168,9 @@ public class HologramManager {
         } catch (Exception e) {}
     }
 
-    private void spawnStaticHologram(String kitName, Location baseLoc) {
+    private void spawnStaticHologram(String kitName, int pos, Location baseLoc) {
+        String key = kitName + "_" + pos;
+
         Vector direction = baseLoc.getDirection();
         direction.setY(0).normalize();
 
@@ -168,7 +186,7 @@ public class HologramManager {
         stands.addAll(spawnHologramLines(leftHoloLoc, generateDailyLines(kitName)));
         stands.addAll(spawnHologramLines(rightHoloLoc, generateMonthlyLines(kitName)));
 
-        staticHolograms.put(kitName, stands);
+        staticHolograms.put(key, stands);
     }
 
     private void startUpdaterTask() {
@@ -178,76 +196,87 @@ public class HologramManager {
                 if (!holoConfig.contains("leaderboards")) return;
 
                 for (String kitName : holoConfig.getConfigurationSection("leaderboards").getKeys(false)) {
-                    String path = "leaderboards." + kitName;
-                    World world = Bukkit.getWorld(holoConfig.getString(path + ".world"));
-                    if (world == null) continue;
+                    ConfigurationSection kitSection = holoConfig.getConfigurationSection("leaderboards." + kitName);
+                    if (kitSection == null) continue;
 
-                    double x = holoConfig.getDouble(path + ".x");
-                    double y = holoConfig.getDouble(path + ".y");
-                    double z = holoConfig.getDouble(path + ".z");
-                    float yaw = (float) holoConfig.getDouble(path + ".yaw");
-                    float pitch = (float) holoConfig.getDouble(path + ".pitch");
+                    for (String posStr : kitSection.getKeys(false)) {
+                        int pos;
+                        try {
+                            pos = Integer.parseInt(posStr);
+                        } catch (NumberFormatException e) { continue; }
 
-                    Location loc = new Location(world, x, y, z, yaw, pitch);
+                        String key = kitName + "_" + pos;
+                        String path = "leaderboards." + kitName + "." + pos;
 
-                    boolean hasPlayerInCountdown = false;
-                    if (loc.getChunk().isLoaded()) {
-                        for (Player p : world.getPlayers()) {
-                            if (p.getLocation().distanceSquared(loc) <= 900) {
-                                if (plugin.frozenPlayers.contains(p.getUniqueId())) {
-                                    hasPlayerInCountdown = true;
-                                    break;
+                        World world = Bukkit.getWorld(holoConfig.getString(path + ".world"));
+                        if (world == null) continue;
+
+                        double x = holoConfig.getDouble(path + ".x");
+                        double y = holoConfig.getDouble(path + ".y");
+                        double z = holoConfig.getDouble(path + ".z");
+                        float yaw = (float) holoConfig.getDouble(path + ".yaw");
+                        float pitch = (float) holoConfig.getDouble(path + ".pitch");
+
+                        Location loc = new Location(world, x, y, z, yaw, pitch);
+
+                        boolean hasPlayerInCountdown = false;
+                        if (loc.getChunk().isLoaded()) {
+                            for (Player p : world.getPlayers()) {
+                                if (p.getLocation().distanceSquared(loc) <= 900) {
+                                    if (plugin.frozenPlayers.contains(p.getUniqueId())) {
+                                        hasPlayerInCountdown = true;
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    boolean isPreview = previewTime.getOrDefault(kitName, 0L) > System.currentTimeMillis();
+                        boolean isPreview = previewTime.getOrDefault(key, 0L) > System.currentTimeMillis();
+                        boolean currentlyVisible = staticHolograms.containsKey(key);
+                        boolean isKitEnabled = plugin.leaderboardManager != null && plugin.leaderboardManager.isKitEnabled(kitName);
 
-                    if (hasPlayerInCountdown || isPreview) {
-                        if (!staticHolograms.containsKey(kitName)) {
-                            clearGhostHolograms(loc, 10.0);
-                            spawnStaticHologram(kitName, loc);
-                        }
+                        if ((hasPlayerInCountdown || isPreview) && isKitEnabled) {
+                            if (!currentlyVisible) {
+                                clearGhostHolograms(loc, 10.0);
+                                spawnStaticHologram(kitName, pos, loc);
+                            }
 
-                        List<ArmorStand> stands = staticHolograms.get(kitName);
-                        boolean needsRespawn = false;
-                        if (stands == null || stands.size() < 18) {
-                            needsRespawn = true;
+                            List<ArmorStand> stands = staticHolograms.get(key);
+                            boolean needsRespawn = false;
+                            if (stands == null || stands.size() < 18) {
+                                needsRespawn = true;
+                            } else {
+                                for (ArmorStand stand : stands) {
+                                    if (stand == null || !stand.isValid() || stand.isDead()) {
+                                        needsRespawn = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (needsRespawn) {
+                                removeStaticHologramEntities(key);
+                                clearGhostHolograms(loc, 10.0);
+                                spawnStaticHologram(kitName, pos, loc);
+                                continue;
+                            }
+
+                            List<String> dailyLines = generateDailyLines(kitName);
+                            List<String> monthlyLines = generateMonthlyLines(kitName);
+
+                            for (int i = 0; i < 9; i++) {
+                                ArmorStand stand = stands.get(i + 9);
+                                if (stand != null && !stand.isDead()) {
+                                    stand.setCustomName(ChatColor.translateAlternateColorCodes('&', monthlyLines.get(i)));
+                                }
+                            }
                         } else {
-                            for (ArmorStand stand : stands) {
-                                if (stand == null || !stand.isValid() || stand.isDead()) {
-                                    needsRespawn = true;
-                                    break;
+                            if (currentlyVisible) {
+                                removeStaticHologramEntities(key);
+                                if (loc.getChunk().isLoaded()) {
+                                    clearGhostHolograms(loc, 10.0);
                                 }
                             }
-                        }
-
-                        if (needsRespawn) {
-                            removeStaticHologramEntities(kitName);
-                            clearGhostHolograms(loc, 10.0);
-                            spawnStaticHologram(kitName, loc);
-                            continue;
-                        }
-
-                        List<String> dailyLines = generateDailyLines(kitName);
-                        List<String> monthlyLines = generateMonthlyLines(kitName);
-
-                        for (int i = 0; i < 9; i++) {
-                            ArmorStand stand = stands.get(i);
-                            if (stand != null && !stand.isDead()) {
-                                stand.setCustomName(ChatColor.translateAlternateColorCodes('&', dailyLines.get(i)));
-                            }
-                        }
-                        for (int i = 0; i < 9; i++) {
-                            ArmorStand stand = stands.get(i + 9);
-                            if (stand != null && !stand.isDead()) {
-                                stand.setCustomName(ChatColor.translateAlternateColorCodes('&', monthlyLines.get(i)));
-                            }
-                        }
-                    } else {
-                        if (staticHolograms.containsKey(kitName)) {
-                            removeStaticHologramEntities(kitName);
                         }
                     }
                 }
@@ -259,8 +288,15 @@ public class HologramManager {
         if (kitName == null) return;
         kitName = ChatColor.stripColor(kitName).toLowerCase();
 
-        if (holoConfig.contains("leaderboards." + kitName)) {
+        if (plugin.leaderboardManager != null && !plugin.leaderboardManager.isKitEnabled(kitName)) {
             return;
+        }
+
+        if (holoConfig.contains("leaderboards." + kitName)) {
+            ConfigurationSection kitSection = holoConfig.getConfigurationSection("leaderboards." + kitName);
+            if (kitSection != null && !kitSection.getKeys(false).isEmpty()) {
+                return;
+            }
         }
 
         removeHolograms(player);
@@ -303,8 +339,9 @@ public class HologramManager {
         }
         activeHolograms.clear();
 
-        for (String kitName : staticHolograms.keySet()) {
-            removeStaticHologramEntities(kitName);
+        List<String> keysToRemove = new ArrayList<>(staticHolograms.keySet());
+        for (String key : keysToRemove) {
+            removeStaticHologramEntities(key);
         }
     }
 

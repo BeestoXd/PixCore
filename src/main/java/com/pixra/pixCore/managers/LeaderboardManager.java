@@ -24,12 +24,15 @@ public class LeaderboardManager {
     private String currentDailyDate;
     private String currentMonthlyDate;
 
+    private boolean globalEnabled = true;
+    private List<String> disabledKits = new ArrayList<>();
+
     public LeaderboardManager(PixCore plugin) {
         this.plugin = plugin;
         loadData();
         checkResets();
     }
-    
+
     public void reload() {
         loadData();
         checkResets();
@@ -49,19 +52,51 @@ public class LeaderboardManager {
             }
         }
         dataConfig = YamlConfiguration.loadConfiguration(dataFile);
-        
+
         currentDailyDate = dataConfig.getString("reset-tracking.daily", LocalDate.now().toString());
         currentMonthlyDate = dataConfig.getString("reset-tracking.monthly", YearMonth.now().toString());
+
+        globalEnabled = dataConfig.getBoolean("settings.global-enabled", true);
+        disabledKits = dataConfig.getStringList("settings.disabled-kits");
+        if (disabledKits == null) {
+            disabledKits = new ArrayList<>();
+        }
     }
 
     public void saveData() {
         try {
             dataConfig.set("reset-tracking.daily", currentDailyDate);
             dataConfig.set("reset-tracking.monthly", currentMonthlyDate);
+            dataConfig.set("settings.global-enabled", globalEnabled);
+            dataConfig.set("settings.disabled-kits", disabledKits);
             dataConfig.save(dataFile);
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public void setGlobalEnabled(boolean enabled) {
+        this.globalEnabled = enabled;
+        saveData();
+    }
+
+    public void setKitEnabled(String kitName, boolean enabled) {
+        kitName = ChatColor.stripColor(kitName).toLowerCase();
+        if (enabled) {
+            disabledKits.remove(kitName);
+        } else {
+            if (!disabledKits.contains(kitName)) {
+                disabledKits.add(kitName);
+            }
+        }
+        saveData();
+    }
+
+    public boolean isKitEnabled(String kitName) {
+        if (!globalEnabled) return false;
+        if (kitName == null || kitName.isEmpty()) return false;
+        kitName = ChatColor.stripColor(kitName).toLowerCase();
+        return !disabledKits.contains(kitName);
     }
 
     private void checkResets() {
@@ -70,17 +105,15 @@ public class LeaderboardManager {
 
         boolean changed = false;
 
-        // Cek Reset Harian: Kosongkan semua data Winstreak hari ini
         if (!today.toString().equals(currentDailyDate)) {
-            dataConfig.set("stats.daily", null);           
+            dataConfig.set("stats.daily", null);
             currentDailyDate = today.toString();
             plugin.getLogger().info("Daily Winstreak Leaderboard has been reset.");
             changed = true;
         }
 
-        // Cek Reset Bulanan: Kosongkan semua data Winstreak bulan ini
         if (!thisMonth.toString().equals(currentMonthlyDate)) {
-            dataConfig.set("stats.monthly", null);         
+            dataConfig.set("stats.monthly", null);
             currentMonthlyDate = thisMonth.toString();
             plugin.getLogger().info("Monthly Winstreak Leaderboard has been reset.");
             changed = true;
@@ -90,19 +123,18 @@ public class LeaderboardManager {
     }
 
     public void addWin(UUID playerUUID, String playerName, String kitName) {
-        checkResets(); // Pastikan data tidak tertinggal saat pergantian hari
+        if (!isKitEnabled(kitName)) return;
+
+        checkResets();
 
         if (kitName == null || kitName.isEmpty()) return;
         kitName = ChatColor.stripColor(kitName).toLowerCase();
 
-        // Update nama player di database
         dataConfig.set("names." + playerUUID.toString(), playerName);
 
-        // --- TAMBAH DAILY STREAK BERJALAN ---
         String dailyPath = "stats.daily." + kitName + "." + playerUUID.toString();
         dataConfig.set(dailyPath, dataConfig.getInt(dailyPath, 0) + 1);
 
-        // --- TAMBAH MONTHLY STREAK BERJALAN ---
         String monthlyPath = "stats.monthly." + kitName + "." + playerUUID.toString();
         dataConfig.set(monthlyPath, dataConfig.getInt(monthlyPath, 0) + 1);
 
@@ -110,24 +142,49 @@ public class LeaderboardManager {
     }
 
     public void resetStreak(UUID playerUUID, String kitName) {
+        if (!isKitEnabled(kitName)) return;
+
         checkResets();
 
         if (kitName == null || kitName.isEmpty()) return;
         kitName = ChatColor.stripColor(kitName).toLowerCase();
-        
-        // --- PUTUS STREAK & LENYAP DARI LEADERBOARD ---
-        // Karena sistem yang Anda inginkan adalah real-time "Current Streak", 
-        // kita paksa skor mereka menjadi 0 saat mereka kalah.
+
         dataConfig.set("stats.daily." + kitName + "." + playerUUID.toString(), 0);
         dataConfig.set("stats.monthly." + kitName + "." + playerUUID.toString(), 0);
 
         saveData();
     }
 
-    // Mengambil Top 5 Data
+    public String getHighestWinstreakString(UUID playerUUID) {
+        checkResets();
+
+        ConfigurationSection dailySection = dataConfig.getConfigurationSection("stats.daily");
+        if (dailySection == null) return "0";
+
+        int maxScore = 0;
+        String bestKit = "";
+
+        for (String kit : dailySection.getKeys(false)) {
+            if (!isKitEnabled(kit)) continue;
+
+            int score = dataConfig.getInt("stats.daily." + kit + "." + playerUUID.toString(), 0);
+            if (score > maxScore) {
+                maxScore = score;
+                bestKit = kit;
+            }
+        }
+
+        if (maxScore > 0) {
+            String formattedKit = bestKit.substring(0, 1).toUpperCase() + bestKit.substring(1).toLowerCase();
+            return maxScore + " (" + formattedKit + ")";
+        }
+
+        return "0";
+    }
+
     public List<Map.Entry<String, Integer>> getTop5(String period, String kitName) {
-        checkResets(); 
-        
+        checkResets();
+
         kitName = ChatColor.stripColor(kitName).toLowerCase();
         ConfigurationSection section = dataConfig.getConfigurationSection("stats." + period + "." + kitName);
         if (section == null) return new ArrayList<>();
@@ -135,21 +192,18 @@ public class LeaderboardManager {
         Map<String, Integer> scores = new HashMap<>();
         for (String uuidStr : section.getKeys(false)) {
             int score = section.getInt(uuidStr);
-            // FILTER: Hanya tampilkan pemain yang memiliki Streak berjalan (>0).
-            // Jika dia kalah (skornya 0), dia akan diabaikan (lenyap dari papan).
-            if (score > 0) { 
+            if (score > 0) {
                 String name = dataConfig.getString("names." + uuidStr, "Unknown");
                 scores.put(name, score);
             }
         }
 
         return scores.entrySet().stream()
-                .sorted((a, b) -> b.getValue().compareTo(a.getValue())) // Sort descending (Terbesar ke terkecil)
+                .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
                 .limit(5)
                 .collect(Collectors.toList());
     }
 
-    // Format Countdown Waktu (Termasuk Detik agar tidak beku)
     public String getDailyCountdown() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime endOfDay = now.toLocalDate().atTime(23, 59, 59);
