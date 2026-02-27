@@ -11,3 +11,7 @@ commands:
   savelayout:
     description: Save custom layouts manually created while in battle.
     aliases: [ layout, savekit ]
+  leaderboard:
+    description: Leaderboard
+    usage: /leaderboard
+    aliases: [lb]

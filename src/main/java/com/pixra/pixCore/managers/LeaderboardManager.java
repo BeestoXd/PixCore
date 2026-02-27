@@ -22,6 +22,7 @@ public class LeaderboardManager {
     private FileConfiguration dataConfig;
 
     private String currentDailyDate;
+    private String currentWeeklyDate;
     private String currentMonthlyDate;
 
     private boolean globalEnabled = true;
@@ -53,7 +54,11 @@ public class LeaderboardManager {
         }
         dataConfig = YamlConfiguration.loadConfiguration(dataFile);
 
-        currentDailyDate = dataConfig.getString("reset-tracking.daily", LocalDate.now().toString());
+        LocalDate today = LocalDate.now();
+        LocalDate startOfWeek = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+
+        currentDailyDate = dataConfig.getString("reset-tracking.daily", today.toString());
+        currentWeeklyDate = dataConfig.getString("reset-tracking.weekly", startOfWeek.toString());
         currentMonthlyDate = dataConfig.getString("reset-tracking.monthly", YearMonth.now().toString());
 
         globalEnabled = dataConfig.getBoolean("settings.global-enabled", true);
@@ -66,6 +71,7 @@ public class LeaderboardManager {
     public void saveData() {
         try {
             dataConfig.set("reset-tracking.daily", currentDailyDate);
+            dataConfig.set("reset-tracking.weekly", currentWeeklyDate);
             dataConfig.set("reset-tracking.monthly", currentMonthlyDate);
             dataConfig.set("settings.global-enabled", globalEnabled);
             dataConfig.set("settings.disabled-kits", disabledKits);
@@ -102,6 +108,7 @@ public class LeaderboardManager {
     private void checkResets() {
         LocalDate today = LocalDate.now();
         YearMonth thisMonth = YearMonth.now();
+        LocalDate startOfWeek = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
 
         boolean changed = false;
 
@@ -109,6 +116,13 @@ public class LeaderboardManager {
             dataConfig.set("stats.daily", null);
             currentDailyDate = today.toString();
             plugin.getLogger().info("Daily Winstreak Leaderboard has been reset.");
+            changed = true;
+        }
+
+        if (!startOfWeek.toString().equals(currentWeeklyDate)) {
+            dataConfig.set("stats.weekly", null);
+            currentWeeklyDate = startOfWeek.toString();
+            plugin.getLogger().info("Weekly Winstreak Leaderboard has been reset.");
             changed = true;
         }
 
@@ -135,6 +149,9 @@ public class LeaderboardManager {
         String dailyPath = "stats.daily." + kitName + "." + playerUUID.toString();
         dataConfig.set(dailyPath, dataConfig.getInt(dailyPath, 0) + 1);
 
+        String weeklyPath = "stats.weekly." + kitName + "." + playerUUID.toString();
+        dataConfig.set(weeklyPath, dataConfig.getInt(weeklyPath, 0) + 1);
+
         String monthlyPath = "stats.monthly." + kitName + "." + playerUUID.toString();
         dataConfig.set(monthlyPath, dataConfig.getInt(monthlyPath, 0) + 1);
 
@@ -150,6 +167,7 @@ public class LeaderboardManager {
         kitName = ChatColor.stripColor(kitName).toLowerCase();
 
         dataConfig.set("stats.daily." + kitName + "." + playerUUID.toString(), 0);
+        dataConfig.set("stats.weekly." + kitName + "." + playerUUID.toString(), 0);
         dataConfig.set("stats.monthly." + kitName + "." + playerUUID.toString(), 0);
 
         saveData();
@@ -183,6 +201,10 @@ public class LeaderboardManager {
     }
 
     public List<Map.Entry<String, Integer>> getTop5(String period, String kitName) {
+        return getTop(period, kitName, 5);
+    }
+
+    public List<Map.Entry<String, Integer>> getTop(String period, String kitName, int limit) {
         checkResets();
 
         kitName = ChatColor.stripColor(kitName).toLowerCase();
@@ -200,7 +222,7 @@ public class LeaderboardManager {
 
         return scores.entrySet().stream()
                 .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
-                .limit(5)
+                .limit(limit)
                 .collect(Collectors.toList());
     }
 
@@ -211,6 +233,16 @@ public class LeaderboardManager {
         long mins = ChronoUnit.MINUTES.between(now, endOfDay) % 60;
         long secs = ChronoUnit.SECONDS.between(now, endOfDay) % 60;
         return hours + "h " + mins + "m " + secs + "s";
+    }
+
+    public String getWeeklyCountdown() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime endOfWeek = now.toLocalDate().with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY)).atStartOfDay().minusSeconds(1);
+        long days = ChronoUnit.DAYS.between(now, endOfWeek);
+        long hours = ChronoUnit.HOURS.between(now, endOfWeek) % 24;
+        long mins = ChronoUnit.MINUTES.between(now, endOfWeek) % 60;
+        long secs = ChronoUnit.SECONDS.between(now, endOfWeek) % 60;
+        return days + "d " + hours + "h " + mins + "m " + secs + "s";
     }
 
     public String getMonthlyCountdown() {

@@ -1,6 +1,7 @@
 package com.pixra.pixCore;
 
 import com.pixra.pixCore.arena.ArenaBoundaryManager;
+import com.pixra.pixCore.commands.LeaderboardCommand;
 import com.pixra.pixCore.commands.SaveLayoutCommand;
 import com.pixra.pixCore.listeners.*;
 import com.pixra.pixCore.managers.*;
@@ -140,9 +141,9 @@ public class PixCore extends JavaPlugin {
     private KillMessageManager killMessageManager;
     public HitActionBarManager hitActionBarManager;
 
-    // --- LEADERBOARD MANAGERS ---
     public LeaderboardManager leaderboardManager;
     public HologramManager hologramManager;
+    public LeaderboardGUIManager leaderboardGUIManager;
 
     public final Set<UUID> frozenPlayers = new HashSet<>();
     public boolean isCountdownRunning = false;
@@ -207,9 +208,9 @@ public class PixCore extends JavaPlugin {
         this.killMessageManager = new KillMessageManager(this);
         this.hitActionBarManager = new HitActionBarManager(this);
 
-        // --- Inisialisasi Leaderboard System ---
         this.leaderboardManager = new LeaderboardManager(this);
         this.hologramManager = new HologramManager(this);
+        this.leaderboardGUIManager = new LeaderboardGUIManager(this);
 
         clearAllCaches();
 
@@ -226,6 +227,10 @@ public class PixCore extends JavaPlugin {
 
         if (getCommand("savelayout") != null) {
             getCommand("savelayout").setExecutor(new SaveLayoutCommand(this));
+        }
+
+        if (getCommand("leaderboard") != null) {
+            getCommand("leaderboard").setExecutor(new LeaderboardCommand(this));
         }
 
         hookStrikePractice();
@@ -256,7 +261,6 @@ public class PixCore extends JavaPlugin {
     public void onDisable() {
         Bukkit.getScheduler().cancelTasks(this);
         clearAllCaches();
-
         if (this.hologramManager != null) {
             this.hologramManager.removeAllHolograms();
         }
@@ -756,13 +760,6 @@ public class PixCore extends JavaPlugin {
         lastDamageTime.remove(uid);
         bowCooldowns.remove(uid);
         killCountCooldown.remove(uid);
-
-        // PENTING: Bebaskan status frozen dan bersihkan fallback hologram jika ada
-        frozenPlayers.remove(uid);
-        if (this.hologramManager != null && Bukkit.getPlayer(uid) != null) {
-            this.hologramManager.removeHolograms(Bukkit.getPlayer(uid));
-        }
-
         if (isQuit) {
             deathMessageCooldowns.remove(uid);
             lastBroadcastMessage.remove(uid);

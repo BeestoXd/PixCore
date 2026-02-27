@@ -44,6 +44,7 @@ public class PixCommand implements CommandExecutor {
 
                 if (plugin.leaderboardManager != null) plugin.leaderboardManager.reload();
                 if (plugin.hologramManager != null) plugin.hologramManager.reload();
+                if (plugin.leaderboardGUIManager != null) plugin.leaderboardGUIManager.loadConfig();
 
                 sender.sendMessage(ChatColor.GREEN + "[PixCore] Configuration reloaded successfully.");
                 return true;
@@ -88,7 +89,7 @@ public class PixCommand implements CommandExecutor {
                 }
 
                 if (args.length < 2) {
-                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove|enable|disable> ...");
+                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove|enable|disable|gui> ...");
                     return true;
                 }
 
@@ -107,6 +108,51 @@ public class PixCommand implements CommandExecutor {
                             plugin.leaderboardManager.setKitEnabled(kitName, enable);
                             sender.sendMessage(ChatColor.GREEN + "[PixCore] Leaderboard for kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' has been " + (enable ? "enabled" : "disabled") + "!");
                         }
+                    }
+                    return true;
+                }
+
+                if (action.equals("gui")) {
+                    if (args.length < 4) {
+                        sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard gui <set|remove> <kit> [slot]");
+                        return true;
+                    }
+                    String guiAction = args[2].toLowerCase();
+                    String kitName = ChatColor.stripColor(args[3]).toLowerCase();
+
+                    if (guiAction.equals("set")) {
+                        if (!(sender instanceof Player)) {
+                            sender.sendMessage(ChatColor.RED + "Only players can set GUI items.");
+                            return true;
+                        }
+                        Player p = (Player) sender;
+                        if (args.length < 5) {
+                            p.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard gui set <kit> <slot>");
+                            return true;
+                        }
+                        int slot;
+                        try { slot = Integer.parseInt(args[4]); } catch (Exception e) { p.sendMessage(ChatColor.RED + "Slot must be number."); return true; }
+
+                        ItemStack item;
+                        try { item = p.getInventory().getItemInMainHand(); }
+                        catch (NoSuchMethodError e) { item = p.getItemInHand(); }
+
+                        if (item == null || item.getType() == Material.AIR) {
+                            p.sendMessage(ChatColor.RED + "You must hold an item in your hand!");
+                            return true;
+                        }
+
+                        if (plugin.leaderboardGUIManager != null) {
+                            plugin.leaderboardGUIManager.setGuiItem(kitName, slot, item);
+                            p.sendMessage(ChatColor.GREEN + "[PixCore] GUI item for '" + kitName + "' set successfully at slot " + slot + "!");
+                        }
+                    } else if (guiAction.equals("remove")) {
+                        if (plugin.leaderboardGUIManager != null) {
+                            plugin.leaderboardGUIManager.removeGuiItem(kitName);
+                            sender.sendMessage(ChatColor.GREEN + "[PixCore] GUI item for '" + kitName + "' removed.");
+                        }
+                    } else {
+                        sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard gui <set|remove> <kit> [slot]");
                     }
                     return true;
                 }
@@ -162,6 +208,8 @@ public class PixCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard remove <kit> <pos>" + ChatColor.GRAY + " - Remove Hologram");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard enable [kit]" + ChatColor.GRAY + " - Enable leaderboard");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard disable [kit]" + ChatColor.GRAY + " - Disable leaderboard");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard gui set <kit> <slot>" + ChatColor.GRAY + " - Set GUI item (hold item)");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard gui remove <kit>" + ChatColor.GRAY + " - Remove GUI item");
         return true;
     }
 }

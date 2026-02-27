@@ -422,8 +422,7 @@ public class MatchListener implements Listener {
     }
 
     private void startMatchCountdown(List<Player> players) {
-        if (plugin.isCountdownRunning) return;
-        plugin.isCountdownRunning = true;
+        // Hapus plugin.isCountdownRunning = true; agar banyak arena dapat memulai countdown secara paralel
         for (Player p : players) {
             if (p != null && p.isOnline()) {
                 plugin.frozenPlayers.add(p.getUniqueId());
@@ -461,21 +460,22 @@ public class MatchListener implements Listener {
             public void run() {
                 if (current <= 0) {
                     for (Player p : players) {
-                        if (p == null || !p.isOnline()) continue;
-
-                        // --- SEMBUNYIKAN HOLOGRAM FALLBACK KETIKA FIGHT DIMULAI ---
-                        if (plugin.hologramManager != null) {
-                            plugin.hologramManager.removeHolograms(p);
+                        if (p != null) {
+                            // PASTIKAN status frozen dan hologram dihapus (meskipun player tiba-tiba offline)
+                            plugin.frozenPlayers.remove(p.getUniqueId());
+                            if (plugin.hologramManager != null) {
+                                plugin.hologramManager.removeHolograms(p);
+                            }
                         }
+
+                        if (p == null || !p.isOnline()) continue;
 
                         plugin.arenaSpawnLocations.put(p.getUniqueId(), p.getLocation().clone());
                         if (plugin.startMatchMessage != null && !plugin.startMatchMessage.isEmpty()) p.sendMessage(plugin.startMatchMessage);
                         if (plugin.startCountdownTitles != null && plugin.startCountdownTitles.containsKey(0)) plugin.sendTitle(p, plugin.startCountdownTitles.get(0), "", 0, 20, 10);
                         if (plugin.startCountdownSoundEnabled && plugin.startMatchSound != null) p.playSound(p.getLocation(), plugin.startMatchSound, plugin.startCountdownVolume, plugin.startCountdownPitch);
-                        plugin.frozenPlayers.remove(p.getUniqueId());
                         if(plugin.blockReplenishManager != null) plugin.blockReplenishManager.scanPlayerInventory(p);
                     }
-                    plugin.isCountdownRunning = false;
                     cancel();
                     return;
                 }
