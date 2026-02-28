@@ -82,6 +82,9 @@ public class PixCommand implements CommandExecutor {
                 return true;
             }
 
+            // =====================================
+            // COMMAND: /pix leaderboard ...
+            // =====================================
             if (args[0].equalsIgnoreCase("leaderboard")) {
                 if (!sender.hasPermission("pixcore.admin")) {
                     sender.sendMessage(ChatColor.RED + "You do not have permission.");
@@ -89,11 +92,58 @@ public class PixCommand implements CommandExecutor {
                 }
 
                 if (args.length < 2) {
-                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove|enable|disable|gui> ...");
+                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove|enable|disable|gui|backup|backups|restore> ...");
                     return true;
                 }
 
                 String action = args[1].toLowerCase();
+
+                // --- BACKUP & RESTORE COMMANDS ---
+                if (action.equals("backup")) {
+                    if (plugin.leaderboardManager != null) {
+                        plugin.leaderboardManager.backupData("manual");
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Data Leaderboard berhasil di-backup secara manual!");
+                    }
+                    return true;
+                }
+
+                if (action.equals("backups")) {
+                    if (plugin.leaderboardManager != null) {
+                        List<String> backups = plugin.leaderboardManager.getBackupFiles();
+                        sender.sendMessage(ChatColor.YELLOW + "=== Available Backups ===");
+                        if (backups.isEmpty()) {
+                            sender.sendMessage(ChatColor.GRAY + "Belum ada file backup.");
+                        } else {
+                            for (int i = 0; i < Math.min(backups.size(), 10); i++) {
+                                sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.AQUA + backups.get(i));
+                            }
+                            if (backups.size() > 10) {
+                                sender.sendMessage(ChatColor.GRAY + "... dan " + (backups.size() - 10) + " lainnya.");
+                            }
+                        }
+                    }
+                    return true;
+                }
+
+                if (action.equals("restore")) {
+                    if (args.length < 3) {
+                        sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard restore <nama_file.yml>");
+                        return true;
+                    }
+                    String fileName = args[2];
+                    if (!fileName.endsWith(".yml")) fileName += ".yml";
+
+                    if (plugin.leaderboardManager != null) {
+                        boolean success = plugin.leaderboardManager.restoreData(fileName);
+                        if (success) {
+                            sender.sendMessage(ChatColor.GREEN + "[PixCore] Sukses mere-store Leaderboard dari " + fileName + "!");
+                            if (plugin.hologramManager != null) plugin.hologramManager.reload();
+                        } else {
+                            sender.sendMessage(ChatColor.RED + "[PixCore] Gagal restore! File backup '" + fileName + "' tidak ditemukan.");
+                        }
+                    }
+                    return true;
+                }
 
                 if (action.equals("enable") || action.equals("disable")) {
                     boolean enable = action.equals("enable");
@@ -112,6 +162,7 @@ public class PixCommand implements CommandExecutor {
                     return true;
                 }
 
+                // NEW GUI SETUP COMMANDS
                 if (action.equals("gui")) {
                     if (args.length < 4) {
                         sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard gui <set|remove> <kit> [slot]");
@@ -157,6 +208,7 @@ public class PixCommand implements CommandExecutor {
                     return true;
                 }
 
+                // POS COMMANDS (HOLOGRAMS)
                 if (args.length < 4) {
                     sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove> <kit_name> <pos>");
                     return true;
@@ -201,6 +253,7 @@ public class PixCommand implements CommandExecutor {
             }
         }
 
+        // Tampilkan semua Help usage
         sender.sendMessage(ChatColor.YELLOW + "=== PixCore Commands ===");
         sender.sendMessage(ChatColor.YELLOW + "/pix reload" + ChatColor.GRAY + " - Reload configurations");
         sender.sendMessage(ChatColor.YELLOW + "/pix bed" + ChatColor.GRAY + " - Get the custom Arena Bed Fixer");
@@ -210,6 +263,9 @@ public class PixCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard disable [kit]" + ChatColor.GRAY + " - Disable leaderboard");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard gui set <kit> <slot>" + ChatColor.GRAY + " - Set GUI item (hold item)");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard gui remove <kit>" + ChatColor.GRAY + " - Remove GUI item");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard backup" + ChatColor.GRAY + " - Backup data manual");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard backups" + ChatColor.GRAY + " - List data backup");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard restore <file>" + ChatColor.GRAY + " - Restore data");
         return true;
     }
 }

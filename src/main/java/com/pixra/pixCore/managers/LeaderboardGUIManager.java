@@ -31,8 +31,16 @@ public class LeaderboardGUIManager implements Listener {
     private File guiFile;
     private FileConfiguration guiConfig;
 
-    private final String MAIN_TITLE = ChatColor.DARK_GRAY + "Leaderboard Winstreak";
-    private final String PERIOD_TITLE_PREFIX = ChatColor.DARK_GRAY + "Top Winstreak: ";
+    private String titleMain;
+    private String titlePeriodPrefix;
+    private String itemTop10Format;
+    private String itemResetFormat;
+
+    private String dailyName, dailyLore;
+    private String weeklyName, weeklyLore;
+    private String monthlyName, monthlyLore;
+    private String closeName, closeLore;
+    private String backName, backLore;
 
     private final Map<UUID, String> activeMenus = new HashMap<>();
 
@@ -54,6 +62,47 @@ public class LeaderboardGUIManager implements Listener {
             }
         }
         guiConfig = YamlConfiguration.loadConfiguration(guiFile);
+
+        boolean saveNeeded = false;
+
+        if (!guiConfig.contains("titles.main-menu")) {
+            guiConfig.set("titles.main-menu", "&8Leaderboard Winstreak");
+            guiConfig.set("titles.period-menu-prefix", "&8Top Winstreak: ");
+            guiConfig.set("titles.item-top10-format", "&7Top 10 {period} Winstreak:");
+            guiConfig.set("titles.item-reset-format", "&7Reset in: &c{time}");
+
+            guiConfig.set("gui-settings.daily.name", "&b&lDAILY");
+            guiConfig.set("gui-settings.daily.lore", "&7Click to view Daily Top 10");
+            guiConfig.set("gui-settings.weekly.name", "&a&lWEEKLY");
+            guiConfig.set("gui-settings.weekly.lore", "&7Click to view Weekly Top 10");
+            guiConfig.set("gui-settings.monthly.name", "&6&lMONTHLY");
+            guiConfig.set("gui-settings.monthly.lore", "&7Click to view Monthly Top 10");
+            guiConfig.set("gui-settings.close.name", "&c&lCLOSE");
+            guiConfig.set("gui-settings.close.lore", "&7Close the menu");
+            guiConfig.set("gui-settings.back.name", "&c&lBACK");
+            guiConfig.set("gui-settings.back.lore", "&7Return to Main Menu");
+            saveNeeded = true;
+        }
+
+        if (saveNeeded) {
+            saveConfig();
+        }
+
+        titleMain = ChatColor.translateAlternateColorCodes('&', guiConfig.getString("titles.main-menu", "&8Leaderboard Winstreak"));
+        titlePeriodPrefix = ChatColor.translateAlternateColorCodes('&', guiConfig.getString("titles.period-menu-prefix", "&8Top Winstreak: "));
+        itemTop10Format = guiConfig.getString("titles.item-top10-format", "&7Top 10 {period} Winstreak:");
+        itemResetFormat = guiConfig.getString("titles.item-reset-format", "&7Reset in: &c{time}");
+
+        dailyName = guiConfig.getString("gui-settings.daily.name", "&b&lDAILY");
+        dailyLore = guiConfig.getString("gui-settings.daily.lore", "&7Click to view Daily Top 10");
+        weeklyName = guiConfig.getString("gui-settings.weekly.name", "&a&lWEEKLY");
+        weeklyLore = guiConfig.getString("gui-settings.weekly.lore", "&7Click to view Weekly Top 10");
+        monthlyName = guiConfig.getString("gui-settings.monthly.name", "&6&lMONTHLY");
+        monthlyLore = guiConfig.getString("gui-settings.monthly.lore", "&7Click to view Monthly Top 10");
+        closeName = guiConfig.getString("gui-settings.close.name", "&c&lCLOSE");
+        closeLore = guiConfig.getString("gui-settings.close.lore", "&7Close the menu");
+        backName = guiConfig.getString("gui-settings.back.name", "&c&lBACK");
+        backLore = guiConfig.getString("gui-settings.back.lore", "&7Return to Main Menu");
     }
 
     public void saveConfig() {
@@ -80,20 +129,25 @@ public class LeaderboardGUIManager implements Listener {
     }
 
     public void openMainMenu(Player player) {
-        Inventory inv = Bukkit.createInventory(null, 36, MAIN_TITLE);
+        String invTitle = titleMain;
+        if (invTitle.length() > 32) invTitle = invTitle.substring(0, 32);
 
-        inv.setItem(11, createItem(Material.NAME_TAG, 0, "&b&lDAILY", "&7Click to view Daily Top 10"));
-        inv.setItem(13, createItem(Material.NAME_TAG, 0, "&a&lWEEKLY", "&7Click to view Weekly Top 10"));
-        inv.setItem(15, createItem(Material.NAME_TAG, 0, "&6&lMONTHLY", "&7Click to view Monthly Top 10"));
+        Inventory inv = Bukkit.createInventory(null, 36, invTitle);
 
-        inv.setItem(31, createItem(Material.NETHER_STAR, 0, "&c&lCLOSE", "&7Close the menu"));
+        inv.setItem(11, createItem(Material.NAME_TAG, 0, dailyName, dailyLore));
+        inv.setItem(13, createItem(Material.NAME_TAG, 0, weeklyName, weeklyLore));
+        inv.setItem(15, createItem(Material.NAME_TAG, 0, monthlyName, monthlyLore));
+
+        inv.setItem(31, createItem(Material.NETHER_STAR, 0, closeName, closeLore));
 
         player.openInventory(inv);
     }
 
     public void openPeriodMenu(Player player, String periodRaw) {
-        String title = PERIOD_TITLE_PREFIX + periodRaw.toUpperCase();
-        Inventory inv = Bukkit.createInventory(null, 54, title);
+        String invTitle = titlePeriodPrefix + periodRaw.toUpperCase();
+        if (invTitle.length() > 32) invTitle = invTitle.substring(0, 32);
+
+        Inventory inv = Bukkit.createInventory(null, 54, invTitle);
 
         updatePeriodMenu(inv, periodRaw);
 
@@ -129,7 +183,7 @@ public class LeaderboardGUIManager implements Listener {
 
                 List<String> lore = new ArrayList<>();
                 lore.add("");
-                lore.add(ChatColor.translateAlternateColorCodes('&', "&7Top 10 " + periodRaw + " Winstreak:"));
+                lore.add(ChatColor.translateAlternateColorCodes('&', itemTop10Format.replace("{period}", periodRaw.toUpperCase())));
 
                 List<Map.Entry<String, Integer>> top10 = plugin.leaderboardManager.getTop(period, kitName, 10);
 
@@ -150,7 +204,7 @@ public class LeaderboardGUIManager implements Listener {
                 else if (period.equals("weekly")) countdown = plugin.leaderboardManager.getWeeklyCountdown();
                 else if (period.equals("monthly")) countdown = plugin.leaderboardManager.getMonthlyCountdown();
 
-                lore.add(ChatColor.translateAlternateColorCodes('&', "&7Reset in: &c" + countdown));
+                lore.add(ChatColor.translateAlternateColorCodes('&', itemResetFormat.replace("{time}", countdown)));
 
                 meta.setLore(lore);
                 item.setItemMeta(meta);
@@ -161,17 +215,25 @@ public class LeaderboardGUIManager implements Listener {
             }
         }
 
-        inv.setItem(49, createItem(Material.ARROW, 0, "&c&lBACK", "&7Return to Main Menu"));
+        inv.setItem(49, createItem(Material.ARROW, 0, backName, backLore));
     }
 
     private ItemStack createItem(Material mat, int data, String name, String loreLine) {
+        if (mat == null) mat = Material.STONE;
+        if (name == null) name = "&cError: Name Null";
+        if (loreLine == null) loreLine = "";
+
         ItemStack item = new ItemStack(mat, 1, (short) data);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
-        List<String> lore = new ArrayList<>();
-        lore.add(ChatColor.translateAlternateColorCodes('&', loreLine));
-        meta.setLore(lore);
-        item.setItemMeta(meta);
+        if (meta != null) {
+            meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
+            List<String> lore = new ArrayList<>();
+            if (!loreLine.isEmpty()) {
+                lore.add(ChatColor.translateAlternateColorCodes('&', loreLine));
+            }
+            meta.setLore(lore);
+            item.setItemMeta(meta);
+        }
         return item;
     }
 
@@ -237,32 +299,35 @@ public class LeaderboardGUIManager implements Listener {
 
         String strippedTitle = ChatColor.stripColor(title);
 
-        if (strippedTitle.equals(ChatColor.stripColor(MAIN_TITLE))) {
+        String expectedMain = ChatColor.stripColor(titleMain);
+        if (expectedMain.length() > 32) expectedMain = expectedMain.substring(0, 32);
+
+        String expectedPrefix = ChatColor.stripColor(titlePeriodPrefix);
+
+        if (strippedTitle.equals(expectedMain)) {
             event.setCancelled(true);
-            ItemStack clicked = event.getCurrentItem();
-            if (clicked == null || !clicked.hasItemMeta() || !clicked.getItemMeta().hasDisplayName()) return;
+            if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
 
             Player player = (Player) event.getWhoClicked();
-            String name = ChatColor.stripColor(clicked.getItemMeta().getDisplayName());
+            int slot = event.getRawSlot();
 
-            if (name.equals("DAILY")) {
+            if (slot == 11) {
                 openPeriodMenu(player, "Daily");
-            } else if (name.equals("WEEKLY")) {
+            } else if (slot == 13) {
                 openPeriodMenu(player, "Weekly");
-            } else if (name.equals("MONTHLY")) {
+            } else if (slot == 15) {
                 openPeriodMenu(player, "Monthly");
-            } else if (name.equals("CLOSE")) {
+            } else if (slot == 31) {
                 player.closeInventory();
             }
-        } else if (strippedTitle.startsWith(ChatColor.stripColor(PERIOD_TITLE_PREFIX))) {
+        } else if (strippedTitle.startsWith(expectedPrefix)) {
             event.setCancelled(true);
-            ItemStack clicked = event.getCurrentItem();
-            if (clicked == null || !clicked.hasItemMeta() || !clicked.getItemMeta().hasDisplayName()) return;
+            if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
 
             Player player = (Player) event.getWhoClicked();
-            String name = ChatColor.stripColor(clicked.getItemMeta().getDisplayName());
+            int slot = event.getRawSlot();
 
-            if (name.equals("BACK")) {
+            if (slot == 49) {
                 openMainMenu(player);
             }
         }

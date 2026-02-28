@@ -355,6 +355,12 @@ public class CombatListener implements Listener {
     @SuppressWarnings("unchecked")
     private boolean isPlayerBedBroken(Player player, Object fight) {
         if (fight == null || plugin.getMIsBed1Broken() == null || plugin.getMIsBed2Broken() == null) return false;
+
+        // BUG FIX: Cek khusus untuk mode PartySplit
+        if (plugin.partySplitManager != null && plugin.partySplitManager.isPartySplit(fight)) {
+            return plugin.partySplitManager.isBedBroken(player, fight);
+        }
+
         try {
             if (plugin.getMGetFirstPlayer() != null) {
                 Player p1 = (Player) plugin.getMGetFirstPlayer().invoke(fight);

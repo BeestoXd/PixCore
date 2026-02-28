@@ -8,9 +8,12 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -79,6 +82,58 @@ public class LeaderboardManager {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public void backupData(String prefix) {
+        if (dataFile == null || !dataFile.exists()) return;
+
+        File backupFolder = new File(plugin.getDataFolder(), "backups");
+        if (!backupFolder.exists()) {
+            backupFolder.mkdirs();
+        }
+
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
+        String fileName = (prefix != null && !prefix.isEmpty() ? prefix + "_" : "") + "leaderboard_" + timestamp + ".yml";
+        File backupFile = new File(backupFolder, fileName);
+
+        try {
+            Files.copy(dataFile.toPath(), backupFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            plugin.getLogger().info("Leaderboard data backed up to: backups/" + fileName);
+        } catch (IOException e) {
+            plugin.getLogger().severe("Failed to backup leaderboard data!");
+            e.printStackTrace();
+        }
+    }
+
+    public boolean restoreData(String fileName) {
+        File backupFolder = new File(plugin.getDataFolder(), "backups");
+        File backupFile = new File(backupFolder, fileName);
+
+        if (!backupFile.exists()) return false;
+
+        try {
+            backupData("pre-restore");
+
+            Files.copy(backupFile.toPath(), dataFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            reload();
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public List<String> getBackupFiles() {
+        File backupFolder = new File(plugin.getDataFolder(), "backups");
+        if (!backupFolder.exists()) return new ArrayList<>();
+
+        File[] files = backupFolder.listFiles((dir, name) -> name.endsWith(".yml"));
+        if (files == null) return new ArrayList<>();
+
+        return Arrays.stream(files)
+                .map(File::getName)
+                .sorted(Collections.reverseOrder())
+                .collect(Collectors.toList());
     }
 
     public void setGlobalEnabled(boolean enabled) {

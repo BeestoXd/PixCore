@@ -6,6 +6,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
@@ -18,8 +19,11 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 public class MatchListener implements Listener {
 
@@ -40,18 +44,18 @@ public class MatchListener implements Listener {
     private final PixCore plugin;
     private final Map<String, List<BedPair>> cachedArenaBeds = new HashMap<>();
 
-    // Konfigurasi untuk Bed Permanen (Arena Bed Fixer)
     private File customBedsFile;
     private org.bukkit.configuration.file.FileConfiguration customBedsConfig;
     private final List<BedPair> persistentBeds = new ArrayList<>();
+
+    private final Set<Object> startedFights = new HashSet<>();
+    private final Map<Object, Long> fightCountdownCooldown = new HashMap<>();
 
     public MatchListener(PixCore plugin) {
         this.plugin = plugin;
         loadCustomBeds();
         registerStrikePracticeEvents();
     }
-
-    // --- FITUR ARENA BED FIXER --- //
 
     private void loadCustomBeds() {
         customBedsFile = new File(plugin.getDataFolder(), "custombeds.yml");
@@ -95,7 +99,6 @@ public class MatchListener implements Listener {
             if (item.getItemMeta().getDisplayName().contains("Arena Bed Fixer")) {
                 Block foot = event.getBlockPlaced();
 
-                // Menunggu 2 tick agar blok bagian Head terbentuk secara default oleh minecraft
                 new BukkitRunnable() {
                     @Override
                     public void run() {
@@ -123,7 +126,6 @@ public class MatchListener implements Listener {
             }
         }
     }
-    // --- AKHIR FITUR ARENA BED FIXER --- //
 
     private void registerStrikePracticeEvents() {
         try {
@@ -151,7 +153,6 @@ public class MatchListener implements Listener {
 
     private void placeBedRobust(Location footLoc, Location headLoc, byte footData, byte headData) {
         try {
-            // Paksa load chunk agar tidak glitch
             if (!footLoc.getChunk().isLoaded()) footLoc.getChunk().load();
             if (!headLoc.getChunk().isLoaded()) headLoc.getChunk().load();
 
@@ -165,26 +166,20 @@ public class MatchListener implements Listener {
                 return;
             }
 
-            // CARA 1 (Paling Ampuh di 1.8.8): Menggunakan Reflection langsung ke Method setTypeIdAndData
             try {
                 Method setTypeIdAndData = Block.class.getMethod("setTypeIdAndData", int.class, byte.class, boolean.class);
                 Method getId = org.bukkit.Material.class.getMethod("getId");
                 int bedId = (Integer) getId.invoke(bedMat);
 
-                // Bersihkan secara manual dulu dengan 0 (AIR) dan applyPhysics = false
                 setTypeIdAndData.invoke(foot, 0, (byte) 0, false);
                 setTypeIdAndData.invoke(head, 0, (byte) 0, false);
 
-                // Pasang kembali Bed-nya dengan sempurna
                 setTypeIdAndData.invoke(foot, bedId, footData, false);
                 setTypeIdAndData.invoke(head, bedId, headData, false);
-                return; // Berhasil menggunakan metode direct, langsung keluar
+                return;
             } catch (Exception legacyEx) {
-                // Abaikan, server Anda kemungkinan versi 1.13+ dan metode ini tidak ada
-                // Jadi kita turun ke fallback di bawah ini
             }
 
-            // CARA 2 (Fallback untuk versi server baru):
             foot.setType(org.bukkit.Material.AIR);
             head.setType(org.bukkit.Material.AIR);
 
@@ -249,47 +244,73 @@ public class MatchListener implements Listener {
             players.removeIf(p -> p == null);
 
             if (!players.isEmpty()) {
-                startMatchCountdown(players);
-                for (Player p : players) plugin.playerMatchKills.put(p.getUniqueId(), 0);
 
-                if (plugin.getMSetBedwars() != null) {
+                String kitName = plugin.getKitName(players.get(0));
+                if (kitName == null) {
+                    try {
+                        Object kit = fight.getClass().getMethod("getKit").invoke(fight);
+                        if (kit != null) kitName = (String) kit.getClass().getMethod("getName").invoke(kit);
+                    } catch (Exception e) {}
+                }
+
+                boolean isBridge = false;
+                if (kitName != null) {
+                    String kitLower = kitName.toLowerCase();
+                    if (kitLower.contains("bridge") || kitLower.contains("thebridge")) {
+                        isBridge = true;
+                    }
+                }
+
+                boolean isFirstRound = !startedFights.contains(fight);
+                if (isFirstRound) {
+                    startedFights.add(fight);
+                    for (Player p : players) plugin.playerMatchKills.put(p.getUniqueId(), 0);
+                }
+
+                long now = System.currentTimeMillis();
+                long lastTime = fightCountdownCooldown.getOrDefault(fight, 0L);
+
+                if (now - lastTime > 4000L) {
+                    if (isFirstRound || !isBridge) {
+                        fightCountdownCooldown.put(fight, now);
+                        startMatchCountdown(players);
+                    }
+                }
+
+                if (plugin.getMSetBedwars() != null && kitName != null) {
                     try {
                         Player p = players.get(0);
-                        String kitName = plugin.getKitName(p);
+                        boolean isBed = false;
 
-                        if (kitName != null) {
-                            boolean isBed = false;
+                        List<String> bedRestoreKits = plugin.getConfig().getStringList("settings.bed-restore-kits");
+                        if (bedRestoreKits != null && !bedRestoreKits.isEmpty()) {
+                            for (String kit : bedRestoreKits) {
+                                if (kit.equalsIgnoreCase(kitName)) {
+                                    isBed = true; break;
+                                }
+                            }
+                        } else {
+                            isBed = kitName.toLowerCase().contains("bed") || kitName.toLowerCase().contains("fireball");
+                        }
 
-                            List<String> bedRestoreKits = plugin.getConfig().getStringList("settings.bed-restore-kits");
-                            if (bedRestoreKits != null && !bedRestoreKits.isEmpty()) {
-                                for (String kit : bedRestoreKits) {
-                                    if (kit.equalsIgnoreCase(kitName)) {
-                                        isBed = true; break;
+                        if (!isBed && plugin.respawnChatCountdownKits != null) {
+                            for (String k : plugin.respawnChatCountdownKits) if (k.equalsIgnoreCase(kitName)) isBed = true;
+                        }
+
+                        if (isBed) {
+                            Object kit = plugin.getStrikePracticeAPI().getClass().getMethod("getKit", Player.class).invoke(plugin.getStrikePracticeAPI(), p);
+                            plugin.getMSetBedwars().invoke(kit, true);
+
+                            if (arena != null) {
+                                try {
+                                    String arenaName = (String) arena.getClass().getMethod("getName").invoke(arena);
+                                    if (!cachedArenaBeds.containsKey(arenaName)) {
+                                        saveArenaBeds(arenaName, arena);
                                     }
-                                }
-                            } else {
-                                isBed = kitName.toLowerCase().contains("bed") || kitName.toLowerCase().contains("fireball");
-                            }
 
-                            if (!isBed && plugin.respawnChatCountdownKits != null) {
-                                for (String k : plugin.respawnChatCountdownKits) if (k.equalsIgnoreCase(kitName)) isBed = true;
-                            }
+                                    forceFixBeds(arenaName, fight, 10L);
 
-                            if (isBed) {
-                                Object kit = plugin.getStrikePracticeAPI().getClass().getMethod("getKit", Player.class).invoke(plugin.getStrikePracticeAPI(), p);
-                                plugin.getMSetBedwars().invoke(kit, true);
-
-                                if (arena != null) {
-                                    try {
-                                        String arenaName = (String) arena.getClass().getMethod("getName").invoke(arena);
-                                        if (!cachedArenaBeds.containsKey(arenaName)) {
-                                            saveArenaBeds(arenaName, arena);
-                                        }
-
-                                        forceFixBeds(arenaName, fight, 10L);
-
-                                    } catch (Exception ex) {}
-                                }
+                                } catch (Exception ex) {}
                             }
                         }
                     } catch (Exception ex) {}
@@ -354,7 +375,6 @@ public class MatchListener implements Listener {
         }
     }
 
-    // Melakukan Fix Bed secara dijadwalkan ganda untuk memastikan Schematic tidak menimpanya
     private void forceFixBeds(String arenaName, Object fight, long delayTicks) {
         new BukkitRunnable() {
             @Override
@@ -363,7 +383,6 @@ public class MatchListener implements Listener {
             }
         }.runTaskLater(plugin, delayTicks);
 
-        // Eksekusi Backup! (Diulangi kembali setelah sekian detik untuk menjamin menimpa glitch Map Reset StrikePractice)
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -372,12 +391,10 @@ public class MatchListener implements Listener {
         }.runTaskLater(plugin, delayTicks + 40L);
     }
 
-    // Pemisahan logika restore Bed agar bisa dipanggil berkali-kali secara aman
     private void executeBedRestore(String arenaName, Object fight) {
         List<BedPair> bedsToRestore = new ArrayList<>();
         boolean usingPersistent = false;
 
-        // 1. Cek Bed Permanen (Arena Bed Fixer) yang berada di area map ini
         try {
             Object arena = (plugin.getMGetArena() != null && fight != null) ? plugin.getMGetArena().invoke(fight) : null;
             if (arena != null && plugin.arenaBoundaryManager != null) {
@@ -403,12 +420,10 @@ public class MatchListener implements Listener {
             }
         } catch (Exception e) {}
 
-        // 2. Jika tidak ada Bed Permanen di area tersebut, gunakan fallback scanning standar
         if (!usingPersistent && cachedArenaBeds.containsKey(arenaName)) {
             bedsToRestore.addAll(cachedArenaBeds.get(arenaName));
         }
 
-        // Restore
         for (BedPair bed : bedsToRestore) {
             placeBedRobust(bed.footLoc, bed.headLoc, bed.footData, bed.headData);
         }
@@ -422,18 +437,10 @@ public class MatchListener implements Listener {
     }
 
     private void startMatchCountdown(List<Player> players) {
-        // Hapus plugin.isCountdownRunning = true; agar banyak arena dapat memulai countdown secara paralel
         for (Player p : players) {
             if (p != null && p.isOnline()) {
                 plugin.frozenPlayers.add(p.getUniqueId());
 
-                // --- MUNCULKAN HOLOGRAM LEADERBOARD FALLBACK SAAT MULAI COUNTDOWN ---
-                if (plugin.hologramManager != null) {
-                    String kitName = plugin.getKitName(p);
-                    plugin.hologramManager.spawnLeaderboardHolograms(p, kitName);
-                }
-
-                // Menunda apply custom kit beberapa tick agar menimpa default dari StrikePractice (Double Apply)
                 new BukkitRunnable() {
                     @Override
                     public void run() {
@@ -453,6 +460,7 @@ public class MatchListener implements Listener {
                 }.runTaskLater(plugin, 15L);
             }
         }
+
         int maxSeconds = plugin.startCountdownDuration;
         new BukkitRunnable() {
             int current = maxSeconds;
@@ -460,20 +468,13 @@ public class MatchListener implements Listener {
             public void run() {
                 if (current <= 0) {
                     for (Player p : players) {
-                        if (p != null) {
-                            // PASTIKAN status frozen dan hologram dihapus (meskipun player tiba-tiba offline)
-                            plugin.frozenPlayers.remove(p.getUniqueId());
-                            if (plugin.hologramManager != null) {
-                                plugin.hologramManager.removeHolograms(p);
-                            }
-                        }
-
                         if (p == null || !p.isOnline()) continue;
 
                         plugin.arenaSpawnLocations.put(p.getUniqueId(), p.getLocation().clone());
                         if (plugin.startMatchMessage != null && !plugin.startMatchMessage.isEmpty()) p.sendMessage(plugin.startMatchMessage);
                         if (plugin.startCountdownTitles != null && plugin.startCountdownTitles.containsKey(0)) plugin.sendTitle(p, plugin.startCountdownTitles.get(0), "", 0, 20, 10);
                         if (plugin.startCountdownSoundEnabled && plugin.startMatchSound != null) p.playSound(p.getLocation(), plugin.startMatchSound, plugin.startCountdownVolume, plugin.startCountdownPitch);
+                        plugin.frozenPlayers.remove(p.getUniqueId());
                         if(plugin.blockReplenishManager != null) plugin.blockReplenishManager.scanPlayerInventory(p);
                     }
                     cancel();
@@ -518,7 +519,7 @@ public class MatchListener implements Listener {
                     if (p == null) continue;
 
                     String result = ChatColor.YELLOW + "" + ChatColor.BOLD + "DRAW!";
-                    String kitName = plugin.getKitName(p); // Ambil nama kit dari player yang sedang diproses
+                    String kitName = plugin.getKitName(p);
 
                     if (winner != null) {
                         boolean isWinner = p.getUniqueId().equals(winner.getUniqueId());
@@ -528,19 +529,18 @@ public class MatchListener implements Listener {
 
                         if (isWinner) {
                             result = ChatColor.GREEN + "" + ChatColor.BOLD + "VICTORY";
-                            // Tambah Win Streak untuk Pemenang
+
                             if (p.getUniqueId().equals(winner.getUniqueId()) && plugin.leaderboardManager != null) {
                                 plugin.leaderboardManager.addWin(winner.getUniqueId(), winner.getName(), kitName);
                             }
                         } else {
                             result = ChatColor.RED + "" + ChatColor.BOLD + "DEFEAT";
-                            // Putus (Reset) Streak untuk yang Kalah
+
                             if (loser != null && p.getUniqueId().equals(loser.getUniqueId()) && plugin.leaderboardManager != null) {
                                 plugin.leaderboardManager.resetStreak(loser.getUniqueId(), kitName);
                             }
                         }
                     } else {
-                        // Jika tidak ada pemenang (DRAW), Putus Streak semuanya
                         if (plugin.leaderboardManager != null) {
                             plugin.leaderboardManager.resetStreak(p.getUniqueId(), kitName);
                         }
@@ -548,6 +548,10 @@ public class MatchListener implements Listener {
 
                     plugin.playerMatchResults.put(p.getUniqueId(), result);
                 }
+
+                plugin.matchScores.remove(fight);
+                startedFights.remove(fight);
+                fightCountdownCooldown.remove(fight);
 
                 new BukkitRunnable() {
                     @Override
@@ -584,42 +588,220 @@ public class MatchListener implements Listener {
         } catch (Exception e) {}
     }
 
+    @SuppressWarnings("unchecked")
     public void handleRoundEnd(Event event) {
         try {
-            Method getWinnerMethod;
-            try { getWinnerMethod = event.getClass().getMethod("getWinner"); } catch (Exception e) { getWinnerMethod = event.getClass().getMethod("getRoundWinner"); }
-            Player winner = (Player) getWinnerMethod.invoke(event);
-            if (winner != null) {
-                String kitName = plugin.getKitName(winner);
-                boolean allowed = plugin.roundEndKits.isEmpty();
-                if(!allowed && kitName != null) { for(String k : plugin.roundEndKits) if(k.equalsIgnoreCase(kitName)) { allowed = true; break;} }
-                if(!allowed) return;
+            final Object fight = event.getClass().getMethod("getFight").invoke(event);
+            if (fight == null) return;
 
-                Object fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), winner);
-                if (fight == null) return;
-
-                if (plugin.getMGetArena() != null) {
+            Player tempWinner = null;
+            for (Method m : event.getClass().getMethods()) {
+                if ((m.getName().toLowerCase().contains("winner") || m.getName().equalsIgnoreCase("getPlayer")) && m.getParameterTypes().length == 0) {
                     try {
-                        Object arena = plugin.getMGetArena().invoke(fight);
-                        if (arena != null) {
-                            String arenaName = (String) arena.getClass().getMethod("getName").invoke(arena);
-                            forceFixBeds(arenaName, fight, 80L);
-                        }
+                        Object res = m.invoke(event);
+                        if (res instanceof Player) { tempWinner = (Player) res; break; }
+                        else if (res instanceof UUID) { tempWinner = Bukkit.getPlayer((UUID) res); break; }
+                        else if (res instanceof String) { tempWinner = Bukkit.getPlayer((String) res); break; }
                     } catch (Exception ex) {}
                 }
+            }
 
-                String title = plugin.getMsg("round-end.title");
-                String subtitle = plugin.getMsg("round-end.subtitle").replace("<winner>", winner.getName());
-                plugin.sendTitle(winner, title, subtitle, 0, 60, 20);
-                if (plugin.isHooked()) {
-                    for (Player p : Bukkit.getOnlinePlayers()) {
-                        if (p.getUniqueId().equals(winner.getUniqueId())) continue;
-                        if (plugin.isInFight(p) && fight.equals(plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), p))) {
-                            plugin.sendTitle(p, title, subtitle, 0, 60, 20);
+            Object tempBestOf = null;
+            try {
+                Method getBestOf = fight.getClass().getMethod("getBestOf");
+                tempBestOf = getBestOf.invoke(fight);
+            } catch (Exception ignored) {}
+
+            final Player initialWinner = tempWinner;
+            final Object bestOf = tempBestOf;
+
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (plugin.endedFightWinners.containsKey(fight)) {
+                        return;
+                    }
+
+                    Player winner = initialWinner;
+
+                    if (bestOf != null) {
+                        try {
+                            Method getRoundsWon = bestOf.getClass().getMethod("getRoundsWon");
+                            Map<UUID, Integer> currentScores = (Map<UUID, Integer>) getRoundsWon.invoke(bestOf);
+                            Map<UUID, Integer> oldScores = plugin.matchScores.getOrDefault(fight, new HashMap<>());
+
+                            if (currentScores != null) {
+                                for (Map.Entry<UUID, Integer> entry : currentScores.entrySet()) {
+                                    UUID u = entry.getKey();
+                                    int newScore = entry.getValue();
+                                    int oldScore = oldScores.getOrDefault(u, 0);
+
+                                    if (newScore > oldScore) {
+                                        winner = Bukkit.getPlayer(u);
+                                        break;
+                                    }
+                                }
+                                plugin.matchScores.put(fight, new HashMap<>(currentScores));
+                            }
+                        } catch (Exception ex) {}
+                    }
+
+                    if (winner == null) return;
+
+                    String kitName = plugin.getKitName(winner);
+                    if (kitName == null) {
+                        try {
+                            Object kit = fight.getClass().getMethod("getKit").invoke(fight);
+                            if (kit != null) kitName = (String) kit.getClass().getMethod("getName").invoke(kit);
+                        } catch (Exception e) {}
+                    }
+
+                    if (kitName == null) return;
+                    String kitLower = kitName.toLowerCase();
+
+                    boolean allowed = plugin.roundEndKits.isEmpty();
+                    if (kitLower.contains("bridge") || kitLower.contains("thebridge") || kitLower.contains("thebridgeelo")) {
+                        allowed = true;
+                    } else if (!allowed) {
+                        for (String k : plugin.roundEndKits) {
+                            if (kitLower.contains(k.toLowerCase())) { allowed = true; break; }
+                        }
+                    }
+
+                    if (!allowed) return;
+
+                    if (plugin.getMGetArena() != null) {
+                        try {
+                            Object arena = plugin.getMGetArena().invoke(fight);
+                            if (arena != null) {
+                                String arenaName = (String) arena.getClass().getMethod("getName").invoke(arena);
+                                forceFixBeds(arenaName, fight, 80L);
+                            }
+                        } catch (Exception ex) {}
+                    }
+
+                    List<Player> matchPlayers = new ArrayList<>();
+                    try {
+                        Method getPlayers = fight.getClass().getMethod("getPlayersInFight");
+                        List<Player> fPlayers = (List<Player>) getPlayers.invoke(fight);
+                        if (fPlayers != null) matchPlayers.addAll(fPlayers);
+                    } catch (Exception e) {
+                        try {
+                            Method getPlayers = fight.getClass().getMethod("getPlayers");
+                            List<Player> fPlayers = (List<Player>) getPlayers.invoke(fight);
+                            if (fPlayers != null) matchPlayers.addAll(fPlayers);
+                        } catch (Exception ignored) {}
+                    }
+                    if (matchPlayers.isEmpty()) matchPlayers.add(winner);
+
+                    if (kitLower.contains("bridge") || kitLower.contains("thebridge")) {
+
+                        for (Player p : matchPlayers) {
+                            if (p != null && p.isOnline()) {
+                                plugin.frozenPlayers.add(p.getUniqueId());
+
+                                new BukkitRunnable() {
+                                    @Override
+                                    public void run() {
+                                        if (p.isOnline()) plugin.applyStartKit(p);
+                                    }
+                                }.runTaskLater(plugin, 5L);
+
+                                new BukkitRunnable() {
+                                    @Override
+                                    public void run() {
+                                        if (p.isOnline()) plugin.applyStartKit(p);
+                                    }
+                                }.runTaskLater(plugin, 15L);
+                            }
+                        }
+
+                        String color = plugin.getTeamColorCode(winner, fight);
+
+                        String bridgeTitleRaw = color + winner.getName() + " " + color + "scored!";
+                        final String bridgeTitle = ChatColor.translateAlternateColorCodes('&', bridgeTitleRaw);
+
+                        Sound levelUp = plugin.getSoundByName("LEVEL_UP");
+                        if (levelUp == null) levelUp = plugin.getSoundByName("ENTITY_PLAYER_LEVELUP");
+                        final Sound finalLevelUp = levelUp;
+
+                        Sound tickSound = plugin.getSoundByName("NOTE_STICKS");
+                        if (tickSound == null) tickSound = plugin.getSoundByName("UI_BUTTON_CLICK");
+                        if (tickSound == null) tickSound = plugin.getSoundByName("CLICK");
+                        final Sound finalTickSound = tickSound;
+
+                        Sound startSound = plugin.getSoundByName("FIREWORK_BLAST");
+                        if (startSound == null) startSound = plugin.getSoundByName("ENTITY_EXPERIENCE_ORB_PICKUP");
+                        if (startSound == null) startSound = plugin.getSoundByName("ORB_PICKUP");
+                        final Sound finalStartSound = startSound;
+
+                        new BukkitRunnable() {
+                            int ticks = 100;
+
+                            @Override
+                            public void run() {
+                                if (ticks < 0 || plugin.endedFightWinners.containsKey(fight)) {
+                                    for (Player p : matchPlayers) {
+                                        if (p != null) plugin.frozenPlayers.remove(p.getUniqueId());
+                                    }
+                                    this.cancel();
+                                    return;
+                                }
+
+                                int seconds = (int) Math.ceil(ticks / 20.0);
+                                String subtitleRaw;
+
+                                if (ticks > 0) {
+                                    subtitleRaw = "&aStarting in " + seconds + "s...";
+                                } else {
+                                    subtitleRaw = "&aStarted!";
+                                }
+
+                                String subtitle = ChatColor.translateAlternateColorCodes('&', subtitleRaw);
+
+                                for (Player p : matchPlayers) {
+                                    if (p != null && p.isOnline()) {
+
+                                        plugin.sendTitle(p, bridgeTitle, subtitle, 0, 15, (ticks == 0 ? 15 : 0));
+
+                                        if (ticks == 100 && finalLevelUp != null) {
+                                            p.playSound(p.getLocation(), finalLevelUp, 1.0f, 1.0f);
+                                        }
+
+                                        if (ticks % 20 == 0) {
+                                            if (ticks > 0) {
+                                                if (finalTickSound != null) {
+                                                    p.playSound(p.getLocation(), finalTickSound, 1.0f, 1.0f);
+                                                }
+                                            } else {
+                                                if (finalStartSound != null) {
+                                                    p.playSound(p.getLocation(), finalStartSound, 1.0f, 1.0f);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                ticks -= 5;
+                            }
+                        }.runTaskTimer(plugin, 0L, 5L);
+
+                    } else {
+                        String titleRaw = plugin.getMsg("round-end.title");
+                        String subtitleRaw = plugin.getMsg("round-end.subtitle").replace("<winner>", winner.getName());
+                        if (titleRaw == null || titleRaw.isEmpty()) titleRaw = "&aRound Over";
+
+                        String title = ChatColor.translateAlternateColorCodes('&', titleRaw);
+                        String subtitle = ChatColor.translateAlternateColorCodes('&', subtitleRaw);
+
+                        for (Player p : matchPlayers) {
+                            if (p != null && p.isOnline()) {
+                                plugin.sendTitle(p, title, subtitle, 5, 50, 15);
+                            }
                         }
                     }
                 }
-            }
+            }.runTaskLater(plugin, 2L);
+
         } catch (Exception e) {}
     }
 }

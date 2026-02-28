@@ -22,7 +22,6 @@ import java.util.*;
 public class HologramManager {
 
     private final PixCore plugin;
-    private final Map<UUID, List<ArmorStand>> activeHolograms = new HashMap<>();
 
     private final Map<String, List<ArmorStand>> staticHolograms = new HashMap<>();
     private final Map<String, Long> previewTime = new HashMap<>();
@@ -265,6 +264,12 @@ public class HologramManager {
                             List<String> monthlyLines = generateMonthlyLines(kitName);
 
                             for (int i = 0; i < 9; i++) {
+                                ArmorStand stand = stands.get(i);
+                                if (stand != null && !stand.isDead()) {
+                                    stand.setCustomName(ChatColor.translateAlternateColorCodes('&', dailyLines.get(i)));
+                                }
+                            }
+                            for (int i = 0; i < 9; i++) {
                                 ArmorStand stand = stands.get(i + 9);
                                 if (stand != null && !stand.isDead()) {
                                     stand.setCustomName(ChatColor.translateAlternateColorCodes('&', monthlyLines.get(i)));
@@ -284,61 +289,7 @@ public class HologramManager {
         }.runTaskTimer(plugin, 20L, 20L);
     }
 
-    public void spawnLeaderboardHolograms(Player player, String kitName) {
-        if (kitName == null) return;
-        kitName = ChatColor.stripColor(kitName).toLowerCase();
-
-        if (plugin.leaderboardManager != null && !plugin.leaderboardManager.isKitEnabled(kitName)) {
-            return;
-        }
-
-        if (holoConfig.contains("leaderboards." + kitName)) {
-            ConfigurationSection kitSection = holoConfig.getConfigurationSection("leaderboards." + kitName);
-            if (kitSection != null && !kitSection.getKeys(false).isEmpty()) {
-                return;
-            }
-        }
-
-        removeHolograms(player);
-
-        Location eyeLoc = player.getEyeLocation();
-        Vector direction = eyeLoc.getDirection();
-        direction.setY(0).normalize();
-
-        Vector leftDir = new Vector(-direction.getZ(), 0, direction.getX()).normalize().multiply(3.5);
-        Location leftHoloLoc = eyeLoc.clone().add(direction.clone().multiply(4.0)).add(leftDir);
-        leftHoloLoc.setY(leftHoloLoc.getY() + 1.5);
-
-        Vector rightDir = new Vector(direction.getZ(), 0, -direction.getX()).normalize().multiply(3.5);
-        Location rightHoloLoc = eyeLoc.clone().add(direction.clone().multiply(4.0)).add(rightDir);
-        rightHoloLoc.setY(rightHoloLoc.getY() + 1.5);
-
-        List<ArmorStand> spawnedStands = new ArrayList<>();
-        spawnedStands.addAll(spawnHologramLines(leftHoloLoc, generateDailyLines(kitName)));
-        spawnedStands.addAll(spawnHologramLines(rightHoloLoc, generateMonthlyLines(kitName)));
-
-        activeHolograms.put(player.getUniqueId(), spawnedStands);
-    }
-
-    public void removeHolograms(Player player) {
-        List<ArmorStand> stands = activeHolograms.remove(player.getUniqueId());
-        if (stands != null) {
-            for (ArmorStand stand : stands) {
-                if (stand != null && !stand.isDead()) stand.remove();
-            }
-        }
-    }
-
     public void removeAllHolograms() {
-        for (List<ArmorStand> stands : activeHolograms.values()) {
-            if (stands != null) {
-                for (ArmorStand stand : stands) {
-                    if (stand != null && !stand.isDead()) stand.remove();
-                }
-            }
-        }
-        activeHolograms.clear();
-
         List<String> keysToRemove = new ArrayList<>(staticHolograms.keySet());
         for (String key : keysToRemove) {
             removeStaticHologramEntities(key);

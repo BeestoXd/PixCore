@@ -5,6 +5,8 @@ import com.pixra.pixCore.commands.LeaderboardCommand;
 import com.pixra.pixCore.commands.SaveLayoutCommand;
 import com.pixra.pixCore.listeners.*;
 import com.pixra.pixCore.managers.*;
+import com.pixra.pixCore.knockback.MLGRushKnockback;
+import com.pixra.pixCore.party.PartySplitManager;
 import com.pixra.pixCore.placeholders.PixCorePlaceholders;
 import com.pixra.pixCore.respawn.RespawnManager;
 import com.pixra.pixCore.commands.PixCommand;
@@ -21,6 +23,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.Team;
 
@@ -55,6 +58,8 @@ public class PixCore extends JavaPlugin {
     private Class<?> clsBestOf;
     private Method mGetCurrentRound;
     private Method mGetRounds;
+    private Method mHandleWin;
+    private Method mHandleDeath; // Ditambahkan untuk trigger kill/round end native SP
     public boolean bestOfReflectionLoaded = false;
     private Method mGetPlayers;
     private Method mGetTeammates;
@@ -140,6 +145,8 @@ public class PixCore extends JavaPlugin {
     public StickFightManager stickFightManager;
     private KillMessageManager killMessageManager;
     public HitActionBarManager hitActionBarManager;
+    public MLGRushKnockback mlgrushKnockback;
+    public PartySplitManager partySplitManager;
 
     public LeaderboardManager leaderboardManager;
     public HologramManager hologramManager;
@@ -161,6 +168,7 @@ public class PixCore extends JavaPlugin {
     public final Map<UUID, String> playerMatchResults = new HashMap<>();
     public final Map<UUID, Integer> playerMatchKills = new HashMap<>();
     public final Map<UUID, Long> killCountCooldown = new HashMap<>();
+    public final Map<Object, Map<UUID, Integer>> matchScores = new HashMap<>();
 
     public Object getStrikePracticeAPI() { return strikePracticeAPI; }
     public Method getMGetKit() { return mGetKit; }
@@ -181,6 +189,10 @@ public class PixCore extends JavaPlugin {
     public Class<?> getClsAbstractFight() { return clsAbstractFight; }
     public Field getFBed1Broken() { return fBed1Broken; }
     public Field getFBed2Broken() { return fBed2Broken; }
+    public Class<?> getClsBestOfFight() { return clsBestOfFight; }
+    public Method getMGetBestOf() { return mGetBestOf; }
+    public Method getMHandleWin() { return mHandleWin; }
+    public Method getMHandleDeath() { return mHandleDeath; }
     public boolean isHooked() { return isHooked; }
     public Map<Object, UUID> getEndedFightWinners() { return endedFightWinners; }
     public Map<UUID, String> getPlayerMatchResults() { return playerMatchResults; }
@@ -207,12 +219,23 @@ public class PixCore extends JavaPlugin {
         this.stickFightManager = new StickFightManager(this);
         this.killMessageManager = new KillMessageManager(this);
         this.hitActionBarManager = new HitActionBarManager(this);
+        this.mlgrushKnockback = new MLGRushKnockback(this);
+        this.partySplitManager = new PartySplitManager(this);
 
         this.leaderboardManager = new LeaderboardManager(this);
         this.hologramManager = new HologramManager(this);
         this.leaderboardGUIManager = new LeaderboardGUIManager(this);
 
         clearAllCaches();
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (leaderboardManager != null) {
+                    leaderboardManager.backupData("auto");
+                }
+            }
+        }.runTaskTimerAsynchronously(this, 72000L, 72000L);
 
         saveDefaultConfig();
         loadConfigValues();
@@ -255,6 +278,8 @@ public class PixCore extends JavaPlugin {
         getServer().getPluginManager().registerEvents(this.bowHitMessageManager, this);
         getServer().getPluginManager().registerEvents(this.stickFightManager, this);
         getServer().getPluginManager().registerEvents(this.hitActionBarManager, this);
+        getServer().getPluginManager().registerEvents(this.mlgrushKnockback, this);
+        getServer().getPluginManager().registerEvents(this.partySplitManager, this);
     }
 
     @Override
@@ -282,6 +307,7 @@ public class PixCore extends JavaPlugin {
         playerMatchResults.clear();
         playerMatchKills.clear();
         killCountCooldown.clear();
+        matchScores.clear();
     }
 
     private void setupTntVariables() {
@@ -318,6 +344,7 @@ public class PixCore extends JavaPlugin {
 
             Class<?> fightClass = Class.forName("ga.strikepractice.fights.Fight");
             this.mGetOpponents = fightClass.getMethod("getOpponents", Player.class);
+            try { this.mHandleDeath = fightClass.getMethod("handleDeath", Player.class); } catch (Exception ignored) {}
             try { this.mGetTeammates = fightClass.getMethod("getTeammates", Player.class); } catch (Exception ignored) {}
             try { this.mPlayersAreTeammates = fightClass.getMethod("playersAreTeammates", Player.class, Player.class); } catch (Exception ignored) {}
             try { this.mPlayersAreOpponents = fightClass.getMethod("playersAreOpponents", Player.class, Player.class); } catch (Exception ignored) {}
@@ -339,6 +366,7 @@ public class PixCore extends JavaPlugin {
                 this.clsBestOf = Class.forName("ga.strikepractice.fights.duel.BestOf");
                 this.mGetCurrentRound = this.clsBestOf.getMethod("getCurrentRound");
                 this.mGetRounds = this.clsBestOf.getMethod("getRounds");
+                this.mHandleWin = this.clsBestOf.getMethod("handleWin", UUID.class);
                 this.bestOfReflectionLoaded = true;
             } catch (Exception e) { this.bestOfReflectionLoaded = false; }
 
@@ -571,15 +599,36 @@ public class PixCore extends JavaPlugin {
             Object baseKit = mGetKit.invoke(strikePracticeAPI, p);
             if (baseKit == null) return;
 
-            boolean isInventoryEmpty = true;
+            String baseName = ChatColor.stripColor((String) baseKit.getClass().getMethod("getName").invoke(baseKit)).toLowerCase();
+            ItemStack baseIcon = null;
+            try { baseIcon = (ItemStack) mBattleKitGetIcon.invoke(baseKit); } catch (Exception ignored) {}
+            String baseIconName = (baseIcon != null && baseIcon.hasItemMeta() && baseIcon.getItemMeta().hasDisplayName())
+                    ? ChatColor.stripColor(baseIcon.getItemMeta().getDisplayName()).toLowerCase() : null;
+
+            // SISTEM BARU: Deteksi jika inventory HANYA berisi buku kit editor / item lobi
+            boolean hasActualItems = false;
             for (ItemStack item : p.getInventory().getContents()) {
                 if (item != null && item.getType() != org.bukkit.Material.AIR) {
-                    isInventoryEmpty = false;
-                    break;
+                    String type = item.getType().name();
+                    boolean isLobbyItem = false;
+                    if (type.contains("BOOK") || type.contains("BED") || type.contains("NAME_TAG") || type.contains("PAPER") || type.contains("EMERALD") || type.contains("COMPASS") || type.contains("WATCH") || type.contains("CLOCK") || type.contains("CHEST") || type.contains("SLIME")) {
+                        if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+                            String name = ChatColor.stripColor(item.getItemMeta().getDisplayName()).toLowerCase();
+                            if (name.contains("layout") || name.contains("kit") || name.contains("default") || name.contains("edit") || name.contains("leave") || name.contains("spectate") || name.contains("play") || name.contains("options") || (baseIconName != null && name.equals(baseIconName))) {
+                                isLobbyItem = true;
+                            }
+                        }
+                    }
+                    if (!isLobbyItem) {
+                        hasActualItems = true;
+                        break;
+                    }
                 }
             }
 
-            if (isInventoryEmpty) {
+            // Jika isinya KOSONG atau HANYA ADA BUKU LOBI, kita hapus lalu panggil kit secara paksa!
+            if (!hasActualItems) {
+                p.getInventory().clear();
                 if (mBattleKitGiveKit != null) {
                     mBattleKitGiveKit.invoke(baseKit, p);
                 } else if (mKitApply != null) {
@@ -595,12 +644,6 @@ public class PixCore extends JavaPlugin {
                 if (mBattleKitGetLeggings != null) legs = (ItemStack) mBattleKitGetLeggings.invoke(baseKit);
                 if (mBattleKitGetBoots != null) boots = (ItemStack) mBattleKitGetBoots.invoke(baseKit);
             } catch (Exception ignored) {}
-
-            String baseName = ChatColor.stripColor((String) baseKit.getClass().getMethod("getName").invoke(baseKit)).toLowerCase();
-            ItemStack baseIcon = null;
-            try { baseIcon = (ItemStack) mBattleKitGetIcon.invoke(baseKit); } catch (Exception ignored) {}
-            String baseIconName = (baseIcon != null && baseIcon.hasItemMeta() && baseIcon.getItemMeta().hasDisplayName())
-                    ? ChatColor.stripColor(baseIcon.getItemMeta().getDisplayName()).toLowerCase() : null;
 
             File spFolder = new File(getDataFolder().getParentFile(), "StrikePractice");
             File pdFile = new File(spFolder, "playerdata/" + p.getUniqueId().toString() + ".yml");
@@ -683,7 +726,19 @@ public class PixCore extends JavaPlugin {
                                 if (matched != null) {
                                     newContents[i] = matched;
                                 } else {
-                                    newContents[i] = target.clone();
+                                    // Cegah buku tertempel jika kita sedang merestore layout TheBridge
+                                    boolean isBook = false;
+                                    if (target.getType().name().contains("BOOK") || target.getType().name().contains("NAME_TAG") || target.getType().name().contains("PAPER")) {
+                                        if (target.hasItemMeta() && target.getItemMeta().hasDisplayName()) {
+                                            String name = ChatColor.stripColor(target.getItemMeta().getDisplayName()).toLowerCase();
+                                            if (name.contains("layout") || name.contains("kit") || name.contains("default") || name.contains("edit") || (baseIconName != null && name.equals(baseIconName))) {
+                                                isBook = true;
+                                            }
+                                        }
+                                    }
+                                    if (!isBook) {
+                                        newContents[i] = target.clone();
+                                    }
                                 }
                             }
 
@@ -760,6 +815,7 @@ public class PixCore extends JavaPlugin {
         lastDamageTime.remove(uid);
         bowCooldowns.remove(uid);
         killCountCooldown.remove(uid);
+        frozenPlayers.remove(uid); // DITAMBAHKAN AGAR LEPAS DARI FREEZE JIKA KELUAR ATAU BERSIH
         if (isQuit) {
             deathMessageCooldowns.remove(uid);
             lastBroadcastMessage.remove(uid);

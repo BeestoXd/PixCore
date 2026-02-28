@@ -1,0 +1,21 @@
+enabled: true
+
+# Pengaturan dasar knockback MLGRush (Feel MMC)
+horizontal: 0.38
+vertical: 0.36
+vertical-limit: 0.42
+
+# Multiplier ketika pemukul (attacker) sedang berlari (W-Tap / Sprint)
+sprint-multiplier: 1.15
+
+# [PENTING] Mekanik Udara / Combo
+# Ini adalah rahasia dari combo MMC. Ketika pemain sudah tidak menyentuh tanah,
+# dorongan mereka akan dikurangi agar tetap bisa di-combo dengan mulus.
+air-horizontal-multiplier: 0.65
+air-vertical-multiplier: 0.90
+
+# [BARU] Mekanik Enchantment (Khusus Stick / Senjata ber-enchant Knockback)
+# Ini yang membuat hit ke pemain diam menggunakan Stick terasa sangat kuat.
+enchantment:
+  kb-horizontal-per-level: 0.45
+  kb-vertical-per-level: 0.05

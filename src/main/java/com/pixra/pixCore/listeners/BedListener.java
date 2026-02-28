@@ -19,12 +19,16 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.UUID;
 
 public class BedListener implements Listener {
 
     private final PixCore plugin;
 
     private final Set<Location> processedBedHalves = new HashSet<>();
+    private final Map<UUID, Long> mlgRushCooldown = new HashMap<>();
 
     public BedListener(PixCore plugin) {
         this.plugin = plugin;
@@ -129,6 +133,79 @@ public class BedListener implements Listener {
                         }
 
                         if (event.isCancelled()) return;
+
+                        String kitName = plugin.getKitName(player);
+                        boolean isMlgRush = kitName != null && (kitName.equalsIgnoreCase("mlgrush") || kitName.equalsIgnoreCase("mlgrushelo"));
+
+                        if (isMlgRush && plugin.bestOfReflectionLoaded && plugin.getClsBestOfFight() != null && plugin.getClsBestOfFight().isInstance(fight)) {
+                            // Sesuai permintaan: bed tidak hancur sepenuhnya
+                            event.setCancelled(true);
+
+                            // Mencegah block ditekan 2x dan ter-call berulang kali
+                            if (mlgRushCooldown.containsKey(player.getUniqueId()) && System.currentTimeMillis() - mlgRushCooldown.get(player.getUniqueId()) < 2000) {
+                                return;
+                            }
+                            mlgRushCooldown.put(player.getUniqueId(), System.currentTimeMillis());
+
+                            try {
+                                Player opponent = null;
+
+                                // 1. Cari opponent dengan iterasi players in fight (Mencegah error NullPointerException nama)
+                                if (plugin.getMGetPlayersInFight() != null) {
+                                    List<Player> fPlayers = (List<Player>) plugin.getMGetPlayersInFight().invoke(fight);
+                                    if (fPlayers != null) {
+                                        for (Player pInFight : fPlayers) {
+                                            if (!pInFight.getUniqueId().equals(player.getUniqueId())) {
+                                                opponent = pInFight;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 2. Fallback mencari opponent
+                                if (opponent == null && plugin.getMGetOpponents() != null) {
+                                    List<String> opponents = (List<String>) plugin.getMGetOpponents().invoke(fight, player);
+                                    if (opponents != null && !opponents.isEmpty()) {
+                                        opponent = Bukkit.getPlayer(opponents.get(0));
+                                    }
+                                }
+
+                                if (opponent != null) {
+                                    // Beri notifikasi ke pemain
+                                    plugin.sendTitle(player, "§a§lBED DESTROYED!", "§fYou scored a point!", 5, 30, 10);
+                                    plugin.sendTitle(opponent, "§c§lBED DESTROYED!", "§f" + player.getName() + " scored a point!", 5, 30, 10);
+
+                                    // Memberikan lethal damage ke lawan adalah cara TERBAIK dan PALING NATIVE
+                                    // agar StrikePractice mereset round, menambah poin, dan teleport spawn.
+                                    // StrikePractice akan mencegat damage ini, lalu menghitungnya sebagai Kemenangan Ronde!
+                                    opponent.setNoDamageTicks(0);
+                                    opponent.setHealth(0.1);
+                                    opponent.damage(10000.0, player);
+
+                                    // Backup menggunakan reflection handleDeath jika listener SP gagal menangkap
+                                    Player finalOpponent = opponent;
+                                    Object finalFight = fight;
+                                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                                        try {
+                                            if (plugin.isInFight(finalOpponent) && plugin.getMHandleDeath() != null) {
+                                                plugin.getMHandleDeath().invoke(finalFight, finalOpponent);
+                                            }
+                                        } catch (Exception e) {}
+                                    }, 2L);
+
+                                } else {
+                                    // Fallback ekstrim jika opponent null (seharusnya tidak terjadi)
+                                    Object bestOf = plugin.getMGetBestOf().invoke(fight);
+                                    if (bestOf != null && plugin.getMHandleWin() != null) {
+                                        plugin.getMHandleWin().invoke(bestOf, player.getUniqueId());
+                                    }
+                                }
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                            return;
+                        }
 
                         if (otherHalf != null) {
                             final Block finalOtherHalf = otherHalf;
