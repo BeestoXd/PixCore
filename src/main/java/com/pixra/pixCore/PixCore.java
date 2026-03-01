@@ -645,115 +645,132 @@ public class PixCore extends JavaPlugin {
                 if (mBattleKitGetBoots != null) boots = (ItemStack) mBattleKitGetBoots.invoke(baseKit);
             } catch (Exception ignored) {}
 
+            List<Object> allKits = new ArrayList<>();
+
+            // 1. Load StrikePractice native kits as fallback
             File spFolder = new File(getDataFolder().getParentFile(), "StrikePractice");
             File pdFile = new File(spFolder, "playerdata/" + p.getUniqueId().toString() + ".yml");
-
             if (pdFile.exists()) {
                 YamlConfiguration pdConfig = YamlConfiguration.loadConfiguration(pdFile);
-                List<?> customKits = pdConfig.getList("kits");
+                List<?> spKits = pdConfig.getList("kits");
+                if (spKits != null) {
+                    allKits.addAll(spKits);
+                }
+            }
 
-                if (customKits != null) {
-                    for (Object customKit : customKits) {
-                        if (customKit == null) continue;
+            // 2. Load PixCore layouts and PREPEND them so they are checked first!
+            File pixFile = new File(getDataFolder(), "layouts/" + p.getUniqueId().toString() + ".yml");
+            if (pixFile.exists()) {
+                YamlConfiguration pixConfig = YamlConfiguration.loadConfiguration(pixFile);
+                List<?> pixKits = pixConfig.getList("kits");
+                if (pixKits != null) {
+                    for (int i = pixKits.size() - 1; i >= 0; i--) {
+                        allKits.add(0, pixKits.get(i));
+                    }
+                }
+            }
 
-                        boolean isMatch = false;
-                        List<ItemStack> yamlInv = null;
+            if (!allKits.isEmpty()) {
+                for (Object customKit : allKits) {
+                    if (customKit == null) continue;
 
-                        if (!Map.class.isAssignableFrom(customKit.getClass())) {
-                            ItemStack icon = null;
-                            try { icon = (ItemStack) mBattleKitGetIcon.invoke(customKit); } catch (Exception ignored) {}
-                            String dName = (icon != null && icon.hasItemMeta() && icon.getItemMeta().hasDisplayName()) ? ChatColor.stripColor(icon.getItemMeta().getDisplayName()).toLowerCase() : "";
-                            String kName = "";
-                            try { kName = ChatColor.stripColor((String) customKit.getClass().getMethod("getName").invoke(customKit)).toLowerCase(); } catch (Exception ignored) {}
+                    boolean isMatch = false;
+                    List<ItemStack> yamlInv = null;
 
-                            if (dName.contains(baseName) || kName.contains(baseName)) {
-                                isMatch = true;
-                                try { yamlInv = (List<ItemStack>) customKit.getClass().getMethod("getInventory").invoke(customKit); } catch (Exception ignored) {}
+                    if (!Map.class.isAssignableFrom(customKit.getClass())) {
+                        ItemStack icon = null;
+                        try { icon = (ItemStack) mBattleKitGetIcon.invoke(customKit); } catch (Exception ignored) {}
+                        String dName = (icon != null && icon.hasItemMeta() && icon.getItemMeta().hasDisplayName()) ? ChatColor.stripColor(icon.getItemMeta().getDisplayName()).toLowerCase() : "";
+                        String kName = "";
+                        try { kName = ChatColor.stripColor((String) customKit.getClass().getMethod("getName").invoke(customKit)).toLowerCase(); } catch (Exception ignored) {}
+
+                        if (dName.contains(baseName) || kName.contains(baseName)) {
+                            isMatch = true;
+                            try { yamlInv = (List<ItemStack>) customKit.getClass().getMethod("getInventory").invoke(customKit); } catch (Exception ignored) {}
+                        }
+                    } else {
+                        Map<?, ?> map = (Map<?, ?>) customKit;
+                        ItemStack icon = map.get("icon") instanceof ItemStack ? (ItemStack) map.get("icon") : null;
+                        String dName = (icon != null && icon.hasItemMeta() && icon.getItemMeta().hasDisplayName()) ? ChatColor.stripColor(icon.getItemMeta().getDisplayName()).toLowerCase() : "";
+                        String kName = map.containsKey("name") ? ChatColor.stripColor(String.valueOf(map.get("name"))).toLowerCase() : "";
+
+                        if (dName.contains(baseName) || kName.contains(baseName)) {
+                            isMatch = true;
+                            if (map.get("inventory") instanceof List) {
+                                yamlInv = (List<ItemStack>) map.get("inventory");
                             }
-                        } else {
-                            Map<?, ?> map = (Map<?, ?>) customKit;
-                            ItemStack icon = map.get("icon") instanceof ItemStack ? (ItemStack) map.get("icon") : null;
-                            String dName = (icon != null && icon.hasItemMeta() && icon.getItemMeta().hasDisplayName()) ? ChatColor.stripColor(icon.getItemMeta().getDisplayName()).toLowerCase() : "";
-                            String kName = map.containsKey("name") ? ChatColor.stripColor(String.valueOf(map.get("name"))).toLowerCase() : "";
+                        }
+                    }
 
-                            if (dName.contains(baseName) || kName.contains(baseName)) {
-                                isMatch = true;
-                                if (map.get("inventory") instanceof List) {
-                                    yamlInv = (List<ItemStack>) map.get("inventory");
+                    if (isMatch && yamlInv != null) {
+                        ItemStack[] currentContents = p.getInventory().getContents();
+                        List<ItemStack> pool = new ArrayList<>();
+
+                        for (int i = 0; i < 36 && i < currentContents.length; i++) {
+                            ItemStack item = currentContents[i];
+                            if (item != null && item.getType() != org.bukkit.Material.AIR) {
+                                boolean isBook = false;
+                                if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+                                    String name = ChatColor.stripColor(item.getItemMeta().getDisplayName()).toLowerCase();
+                                    if (baseIconName != null && name.equals(baseIconName)) isBook = true;
+                                    String type = item.getType().name();
+                                    if (type.contains("BOOK") || type.contains("BED") || type.contains("NAME_TAG") || type.contains("PAPER") || type.contains("EMERALD")) {
+                                        if (name.contains("layout") || name.contains("kit") || name.contains("default") || name.contains("#") || name.contains("edit")) {
+                                            isBook = true;
+                                        }
+                                    }
+                                }
+                                if (!isBook) {
+                                    pool.add(item.clone());
                                 }
                             }
                         }
 
-                        if (isMatch && yamlInv != null) {
-                            ItemStack[] currentContents = p.getInventory().getContents();
-                            List<ItemStack> pool = new ArrayList<>();
+                        ItemStack[] newContents = new ItemStack[currentContents.length];
+                        for (int i = 0; i < yamlInv.size() && i < newContents.length; i++) {
+                            ItemStack target = yamlInv.get(i);
+                            if (target == null || target.getType() == org.bukkit.Material.AIR) continue;
 
-                            for (int i = 0; i < 36 && i < currentContents.length; i++) {
-                                ItemStack item = currentContents[i];
-                                if (item != null && item.getType() != org.bukkit.Material.AIR) {
-                                    boolean isBook = false;
-                                    if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
-                                        String name = ChatColor.stripColor(item.getItemMeta().getDisplayName()).toLowerCase();
-                                        if (baseIconName != null && name.equals(baseIconName)) isBook = true;
-                                        String type = item.getType().name();
-                                        if (type.contains("BOOK") || type.contains("BED") || type.contains("NAME_TAG") || type.contains("PAPER") || type.contains("EMERALD")) {
-                                            if (name.contains("layout") || name.contains("kit") || name.contains("default") || name.contains("#") || name.contains("edit")) {
-                                                isBook = true;
-                                            }
+                            ItemStack matched = null;
+                            for (int j = 0; j < pool.size(); j++) {
+                                ItemStack poolItem = pool.get(j);
+                                if (isItemMatch(target, poolItem)) {
+                                    matched = poolItem;
+                                    pool.remove(j);
+                                    break;
+                                }
+                            }
+
+                            if (matched != null) {
+                                newContents[i] = matched;
+                            } else {
+                                // Cegah buku tertempel jika kita sedang merestore layout TheBridge
+                                boolean isBook = false;
+                                if (target.getType().name().contains("BOOK") || target.getType().name().contains("NAME_TAG") || target.getType().name().contains("PAPER")) {
+                                    if (target.hasItemMeta() && target.getItemMeta().hasDisplayName()) {
+                                        String name = ChatColor.stripColor(target.getItemMeta().getDisplayName()).toLowerCase();
+                                        if (name.contains("layout") || name.contains("kit") || name.contains("default") || name.contains("edit") || (baseIconName != null && name.equals(baseIconName))) {
+                                            isBook = true;
                                         }
                                     }
-                                    if (!isBook) {
-                                        pool.add(item.clone());
-                                    }
+                                }
+                                if (!isBook) {
+                                    newContents[i] = target.clone();
                                 }
                             }
-
-                            ItemStack[] newContents = new ItemStack[currentContents.length];
-                            for (int i = 0; i < yamlInv.size() && i < newContents.length; i++) {
-                                ItemStack target = yamlInv.get(i);
-                                if (target == null || target.getType() == org.bukkit.Material.AIR) continue;
-
-                                ItemStack matched = null;
-                                for (int j = 0; j < pool.size(); j++) {
-                                    ItemStack poolItem = pool.get(j);
-                                    if (isItemMatch(target, poolItem)) {
-                                        matched = poolItem;
-                                        pool.remove(j);
-                                        break;
-                                    }
-                                }
-
-                                if (matched != null) {
-                                    newContents[i] = matched;
-                                } else {
-                                    // Cegah buku tertempel jika kita sedang merestore layout TheBridge
-                                    boolean isBook = false;
-                                    if (target.getType().name().contains("BOOK") || target.getType().name().contains("NAME_TAG") || target.getType().name().contains("PAPER")) {
-                                        if (target.hasItemMeta() && target.getItemMeta().hasDisplayName()) {
-                                            String name = ChatColor.stripColor(target.getItemMeta().getDisplayName()).toLowerCase();
-                                            if (name.contains("layout") || name.contains("kit") || name.contains("default") || name.contains("edit") || (baseIconName != null && name.equals(baseIconName))) {
-                                                isBook = true;
-                                            }
-                                        }
-                                    }
-                                    if (!isBook) {
-                                        newContents[i] = target.clone();
-                                    }
-                                }
-                            }
-
-                            for (ItemStack leftover : pool) {
-                                for (int i = 0; i < newContents.length; i++) {
-                                    if (newContents[i] == null) {
-                                        newContents[i] = leftover;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            p.getInventory().setContents(newContents);
-                            break;
                         }
+
+                        for (ItemStack leftover : pool) {
+                            for (int i = 0; i < newContents.length; i++) {
+                                if (newContents[i] == null) {
+                                    newContents[i] = leftover;
+                                    break;
+                                }
+                            }
+                        }
+
+                        p.getInventory().setContents(newContents);
+                        break;
                     }
                 }
             }

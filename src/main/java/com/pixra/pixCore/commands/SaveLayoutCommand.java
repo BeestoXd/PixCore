@@ -44,8 +44,12 @@ public class SaveLayoutCommand implements CommandExecutor {
 
             String baseName = ChatColor.stripColor((String) baseKit.getClass().getMethod("getName").invoke(baseKit)).toLowerCase();
 
-            File spFolder = new File(plugin.getDataFolder().getParentFile(), "StrikePractice");
-            File pdFile = new File(spFolder, "playerdata/" + p.getUniqueId().toString() + ".yml");
+            // UBAH: Simpan ke folder PixCore/layouts agar tidak tertimpa oleh cache StrikePractice
+            File layoutsFolder = new File(plugin.getDataFolder(), "layouts");
+            if (!layoutsFolder.exists()) {
+                layoutsFolder.mkdirs();
+            }
+            File pdFile = new File(layoutsFolder, p.getUniqueId().toString() + ".yml");
 
             YamlConfiguration pdConfig;
             if (pdFile.exists()) {
@@ -125,7 +129,7 @@ public class SaveLayoutCommand implements CommandExecutor {
             pdConfig.set("kits", customKits);
             pdConfig.save(pdFile);
 
-            p.sendMessage(ChatColor.GREEN + "Kit layout successfully saved! It will be used in your next matches.");
+            p.sendMessage(ChatColor.GREEN + "Kit layout successfully saved! It will be used in your next matches permanently.");
 
         } catch (Exception e) {
             p.sendMessage(ChatColor.RED + "An error occurred while saving layout.");
