@@ -210,6 +210,4 @@ settings:
     sounds:
       enabled: true
       victory-primary: FIREWORK_LAUNCH
-      victory-secondary: FIREWORK_TWINKLE_FAR
-      defeat-primary: FIREWORK_LAUNCH
-      defeat-secondary: FIREWORK_TWINKLE_FAR
+      victory-secondary: FIREWORK_TWINKLE

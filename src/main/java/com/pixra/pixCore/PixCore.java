@@ -123,7 +123,6 @@ public class PixCore extends JavaPlugin {
     public Map<Integer, Sound> startCountdownSounds;
     public Sound startMatchSound;
 
-    // --- END MATCH SOUNDS ---
     public boolean endMatchSoundEnabled;
     public Sound victorySoundPrimary;
     public Sound victorySoundSecondary;
@@ -214,7 +213,6 @@ public class PixCore extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        // Initialize DuelScoreManager
         this.duelScoreManager = new DuelScoreManager(this);
         this.respawnManager = new RespawnManager(this);
         this.blockDisappearManager = new BlockDisappearManager(this);
@@ -273,7 +271,6 @@ public class PixCore extends JavaPlugin {
             new PixCorePlaceholders(this).register();
         }
 
-        // No need to register DuelScoreManager as a listener if it doesn't implement Listener
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
         getServer().getPluginManager().registerEvents(new MatchListener(this), this);
         getServer().getPluginManager().registerEvents(new BedListener(this), this);
@@ -468,7 +465,6 @@ public class PixCore extends JavaPlugin {
 
         this.startMatchSound = getSoundByName(getConfig().getString(startSoundPath, null));
 
-        // --- END MATCH SOUNDS LOADING ---
         this.endMatchSoundEnabled = getConfig().getBoolean("settings.end-match.sounds.enabled", true);
         if (!getConfig().contains("settings.end-match.sounds.enabled")) {
             this.endMatchSoundEnabled = getConfig().getBoolean("end-match.sounds.enabled", true);
@@ -967,42 +963,37 @@ public class PixCore extends JavaPlugin {
         }
     }
 
-    // --- FUNGSI UNTUK MEMUTAR SUARA END MATCH ---
     public void playEndMatchSounds(Player player, boolean isVictory) {
-        if (!endMatchSoundEnabled || player == null || !player.isOnline()) return;
+        if (!endMatchSoundEnabled || player == null || !player.isOnline() || !isVictory) return;
 
-        Sound primary = isVictory ? victorySoundPrimary : defeatSoundPrimary;
-        Sound secondary = isVictory ? victorySoundSecondary : defeatSoundSecondary;
+        Sound primary = victorySoundPrimary;
+        Sound secondary = victorySoundSecondary;
 
-        // Putar suara secondary (contoh: FIREWORK_TWINKLE) HANYA SATU KALI di awal
         if (secondary != null) {
             try {
                 player.playSound(player.getLocation(), secondary, 1.0f, 1.0f);
             } catch (Exception ignored) {}
         }
 
-        // Loop untuk memutar suara primary (contoh: FIREWORK_LAUNCH) berkali-kali selama 3 detik
         new BukkitRunnable() {
             int elapsedTicks = 0;
 
             @Override
             public void run() {
-                // Berhenti jika player offline atau sudah 3 detik (60 ticks)
                 if (!player.isOnline() || elapsedTicks > 60) {
                     this.cancel();
                     return;
                 }
 
                 try {
-                    // Putar primary sound setiap eksekusi (10 ticks = 0.5 detik)
                     if (primary != null) {
                         player.playSound(player.getLocation(), primary, 1.0f, 1.0f);
                     }
                 } catch (Exception ignored) {}
 
-                elapsedTicks += 10; // Tambah 10 tick setiap iterasi loop (0.5 detik berlalu)
+                elapsedTicks += 10;
             }
-        }.runTaskTimer(this, 0L, 10L); // Jalankan task timer setiap 10 ticks (0.5 detik)
+        }.runTaskTimer(this, 0L, 10L);
     }
 
     public void sendCooldownMessage(Player player, String configKey) {
