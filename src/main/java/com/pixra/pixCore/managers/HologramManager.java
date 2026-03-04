@@ -152,6 +152,7 @@ public class HologramManager {
                         String name = as.getCustomName();
                         if (name == null ||
                                 name.contains("WINSTREAK") ||
+                                name.contains("TOP WINS") ||
                                 name.contains("Kit:") ||
                                 name.contains("Reset in:") ||
                                 name.contains("Win") ||
@@ -302,21 +303,21 @@ public class HologramManager {
         lines.add("&eKit: &f" + kitName.toUpperCase());
         lines.add("&7Reset in: &c" + plugin.leaderboardManager.getDailyCountdown());
         lines.add("&r");
-        lines.addAll(getPaddedTop5(plugin.leaderboardManager.getTop5("daily", kitName)));
+        lines.addAll(getPaddedTop5(plugin.leaderboardManager.getTop("winstreak", "daily", kitName, 5), "Win"));
         return lines;
     }
 
     private List<String> generateMonthlyLines(String kitName) {
         List<String> lines = new ArrayList<>();
-        lines.add("&6&lMONTHLY WINSTREAK");
+        lines.add("&6&lMONTHLY TOP WINS");
         lines.add("&eKit: &f" + kitName.toUpperCase());
         lines.add("&7Reset in: &c" + plugin.leaderboardManager.getMonthlyCountdown());
         lines.add("&r");
-        lines.addAll(getPaddedTop5(plugin.leaderboardManager.getTop5("monthly", kitName)));
+        lines.addAll(getPaddedTop5(plugin.leaderboardManager.getTop("wins", "monthly", kitName, 5), "Win"));
         return lines;
     }
 
-    private List<String> getPaddedTop5(List<Map.Entry<String, Integer>> top5) {
+    private List<String> getPaddedTop5(List<Map.Entry<String, Integer>> top5, String suffix) {
         List<String> lines = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
             int rank = i + 1;
@@ -324,7 +325,7 @@ public class HologramManager {
 
             if (i < top5.size()) {
                 Map.Entry<String, Integer> entry = top5.get(i);
-                lines.add(color + rank + ". &f" + entry.getKey() + " &7- &d" + entry.getValue() + " Win");
+                lines.add(color + rank + ". &f" + entry.getKey() + " &7- &d" + entry.getValue() + " " + suffix);
             } else {
                 lines.add(color + rank + ". &7&o-");
             }

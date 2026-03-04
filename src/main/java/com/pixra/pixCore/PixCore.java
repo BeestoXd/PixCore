@@ -3,6 +3,7 @@ package com.pixra.pixCore;
 import com.pixra.pixCore.arena.ArenaBoundaryManager;
 import com.pixra.pixCore.commands.LeaderboardCommand;
 import com.pixra.pixCore.commands.SaveLayoutCommand;
+import com.pixra.pixCore.duels.DuelScoreManager;
 import com.pixra.pixCore.listeners.*;
 import com.pixra.pixCore.managers.*;
 import com.pixra.pixCore.knockback.MLGRushKnockback;
@@ -59,7 +60,7 @@ public class PixCore extends JavaPlugin {
     private Method mGetCurrentRound;
     private Method mGetRounds;
     private Method mHandleWin;
-    private Method mHandleDeath; // Ditambahkan untuk trigger kill/round end native SP
+    private Method mHandleDeath;
     public boolean bestOfReflectionLoaded = false;
     private Method mGetPlayers;
     private Method mGetTeammates;
@@ -122,6 +123,13 @@ public class PixCore extends JavaPlugin {
     public Map<Integer, Sound> startCountdownSounds;
     public Sound startMatchSound;
 
+    // --- END MATCH SOUNDS ---
+    public boolean endMatchSoundEnabled;
+    public Sound victorySoundPrimary;
+    public Sound victorySoundSecondary;
+    public Sound defeatSoundPrimary;
+    public Sound defeatSoundSecondary;
+
     public boolean respawnChatCountdownEnabled;
     public Set<String> respawnChatCountdownKits;
     public Map<Integer, String> respawnChatNumbers;
@@ -147,6 +155,7 @@ public class PixCore extends JavaPlugin {
     public HitActionBarManager hitActionBarManager;
     public MLGRushKnockback mlgrushKnockback;
     public PartySplitManager partySplitManager;
+    public DuelScoreManager duelScoreManager;
 
     public LeaderboardManager leaderboardManager;
     public HologramManager hologramManager;
@@ -205,6 +214,8 @@ public class PixCore extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        // Initialize DuelScoreManager
+        this.duelScoreManager = new DuelScoreManager(this);
         this.respawnManager = new RespawnManager(this);
         this.blockDisappearManager = new BlockDisappearManager(this);
         this.hitRewardManager = new HitRewardManager(this);
@@ -262,6 +273,7 @@ public class PixCore extends JavaPlugin {
             new PixCorePlaceholders(this).register();
         }
 
+        // No need to register DuelScoreManager as a listener if it doesn't implement Listener
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
         getServer().getPluginManager().registerEvents(new MatchListener(this), this);
         getServer().getPluginManager().registerEvents(new BedListener(this), this);
@@ -431,10 +443,16 @@ public class PixCore extends JavaPlugin {
 
         this.startCountdownSounds = new HashMap<>();
         this.startCountdownSoundEnabled = getConfig().getBoolean("settings.start-countdown.sounds.enabled", false);
+        if (!this.startCountdownSoundEnabled) {
+            this.startCountdownSoundEnabled = getConfig().getBoolean("start-countdown.sounds.enabled", false);
+        }
+
         this.startCountdownVolume = (float) getConfig().getDouble("settings.start-countdown.sounds.volume", 1.0);
         this.startCountdownPitch = (float) getConfig().getDouble("settings.start-countdown.sounds.pitch", 1.0);
 
         ConfigurationSection soundSection = getConfig().getConfigurationSection("settings.start-countdown.sounds.per-second");
+        if (soundSection == null) soundSection = getConfig().getConfigurationSection("start-countdown.sounds.per-second");
+
         if (soundSection != null) {
             for (String key : soundSection.getKeys(false)) {
                 try {
@@ -444,7 +462,30 @@ public class PixCore extends JavaPlugin {
             }
         }
 
-        this.startMatchSound = getSoundByName(getConfig().getString("settings.start-countdown.sounds.start-sound", null));
+        String startSoundPath = getConfig().contains("settings.start-countdown.sounds.start-sound")
+                ? "settings.start-countdown.sounds.start-sound"
+                : "start-countdown.sounds.start-sound";
+
+        this.startMatchSound = getSoundByName(getConfig().getString(startSoundPath, null));
+
+        // --- END MATCH SOUNDS LOADING ---
+        this.endMatchSoundEnabled = getConfig().getBoolean("settings.end-match.sounds.enabled", true);
+        if (!getConfig().contains("settings.end-match.sounds.enabled")) {
+            this.endMatchSoundEnabled = getConfig().getBoolean("end-match.sounds.enabled", true);
+        }
+
+        String vic1Path = getConfig().contains("settings.end-match.sounds.victory-primary") ? "settings.end-match.sounds.victory-primary" : "end-match.sounds.victory-primary";
+        this.victorySoundPrimary = getSoundByName(getConfig().getString(vic1Path, "FIREWORK_LAUNCH"));
+
+        String vic2Path = getConfig().contains("settings.end-match.sounds.victory-secondary") ? "settings.end-match.sounds.victory-secondary" : "end-match.sounds.victory-secondary";
+        this.victorySoundSecondary = getSoundByName(getConfig().getString(vic2Path, "FIREWORK_TWINKLE_FAR"));
+
+        String def1Path = getConfig().contains("settings.end-match.sounds.defeat-primary") ? "settings.end-match.sounds.defeat-primary" : "end-match.sounds.defeat-primary";
+        this.defeatSoundPrimary = getSoundByName(getConfig().getString(def1Path, "FIREWORK_LAUNCH"));
+
+        String def2Path = getConfig().contains("settings.end-match.sounds.defeat-secondary") ? "settings.end-match.sounds.defeat-secondary" : "end-match.sounds.defeat-secondary";
+        this.defeatSoundSecondary = getSoundByName(getConfig().getString(def2Path, "FIREWORK_TWINKLE_FAR"));
+
         this.respawnCountdownInterval = getConfig().getInt("settings.respawn-countdown-interval", 20);
         this.bowCooldownEnabled = getConfig().getBoolean("settings.bow-cooldown.enabled", false);
         this.bowCooldownSeconds = getConfig().getInt("settings.bow-cooldown.seconds", 3);
@@ -455,17 +496,24 @@ public class PixCore extends JavaPlugin {
 
         this.startCountdownMessages = new HashMap<>();
         ConfigurationSection msgSection = getConfig().getConfigurationSection("settings.start-countdown.messages");
+        if (msgSection == null) msgSection = getConfig().getConfigurationSection("start-countdown.messages");
+
         if (msgSection != null) {
             for (String key : msgSection.getKeys(false)) {
                 try { startCountdownMessages.put(Integer.parseInt(key), ChatColor.translateAlternateColorCodes('&', msgSection.getString(key))); } catch (Exception e) {}
             }
         }
 
-        this.startMatchMessage = ChatColor.translateAlternateColorCodes('&', getConfig().getString("settings.start-countdown.start-message", "&aMatch Started!"));
+        String matchMsgPath = getConfig().contains("settings.start-countdown.start-message") ? "settings.start-countdown.start-message" : "start-countdown.start-message";
+        this.startMatchMessage = ChatColor.translateAlternateColorCodes('&', getConfig().getString(matchMsgPath, "&aMatch Started!"));
+
         this.startCountdownEnabled = getConfig().getBoolean("settings.start-countdown.enabled", false);
+        if (!this.startCountdownEnabled) this.startCountdownEnabled = getConfig().getBoolean("start-countdown.enabled", false);
 
         this.startCountdownTitles = new HashMap<>();
         ConfigurationSection section = getConfig().getConfigurationSection("settings.start-countdown.titles");
+        if (section == null) section = getConfig().getConfigurationSection("start-countdown.titles");
+
         if (section != null) {
             for (String key : section.getKeys(false)) {
                 try { startCountdownTitles.put(Integer.parseInt(key), ChatColor.translateAlternateColorCodes('&', section.getString(key))); } catch (Exception e) {}
@@ -474,9 +522,6 @@ public class PixCore extends JavaPlugin {
 
         String soundName = getConfig().getString("settings.respawn-sound", "NOTE_PLING");
         this.respawnSound = getSoundByName(soundName);
-        if(this.respawnSound == null && soundName.equalsIgnoreCase("ORB_PICKUP")) {
-            this.respawnSound = getSoundByName("ENTITY_EXPERIENCE_ORB_PICKUP");
-        }
         this.soundEnabled = (this.respawnSound != null);
     }
 
@@ -499,8 +544,90 @@ public class PixCore extends JavaPlugin {
     }
 
     public Sound getSoundByName(String name) {
-        if (name == null) return null;
-        try { return (Sound) Sound.class.getField(name.toUpperCase()).get(null); } catch (Exception e) { return null; }
+        if (name == null || name.isEmpty() || name.equalsIgnoreCase("none") || name.equalsIgnoreCase("null")) return null;
+        name = name.trim().toUpperCase();
+
+        Sound sound = getSoundSafe(name);
+        if (sound != null) return sound;
+
+        String[] fallbacks = new String[0];
+
+        if (name.contains("FIREWORK") && name.contains("BLAST")) {
+            fallbacks = new String[]{"ENTITY_FIREWORK_ROCKET_BLAST", "ENTITY_FIREWORK_BLAST", "FIREWORK_BLAST", "FIREWORK_LARGE_BLAST", "ENTITY_FIREWORK_ROCKET_LARGE_BLAST"};
+        } else if (name.contains("FIREWORK") && name.contains("LAUNCH")) {
+            fallbacks = new String[]{"ENTITY_FIREWORK_ROCKET_LAUNCH", "ENTITY_FIREWORK_LAUNCH", "FIREWORK_LAUNCH"};
+        } else if (name.contains("FIREWORK") && name.contains("TWINKLE")) {
+            fallbacks = new String[]{"ENTITY_FIREWORK_ROCKET_TWINKLE_FAR", "ENTITY_FIREWORK_TWINKLE_FAR", "FIREWORK_TWINKLE_FAR", "ENTITY_FIREWORK_ROCKET_TWINKLE", "FIREWORK_TWINKLE"};
+        } else if (name.contains("PLING")) {
+            fallbacks = new String[]{"BLOCK_NOTE_BLOCK_PLING", "BLOCK_NOTE_PLING", "NOTE_PLING"};
+        } else if (name.contains("STICK") || name.contains("HAT")) {
+            fallbacks = new String[]{"BLOCK_NOTE_BLOCK_HAT", "BLOCK_NOTE_HAT", "NOTE_STICKS"};
+        } else if (name.contains("ORB_PICKUP")) {
+            fallbacks = new String[]{"ENTITY_EXPERIENCE_ORB_PICKUP", "ORB_PICKUP"};
+        } else if (name.contains("LEVEL_UP") || name.contains("LEVELUP")) {
+            fallbacks = new String[]{"ENTITY_PLAYER_LEVELUP", "LEVEL_UP"};
+        } else if (name.contains("GROWL")) {
+            fallbacks = new String[]{"ENTITY_ENDER_DRAGON_GROWL", "ENTITY_ENDERDRAGON_GROWL", "ENDERDRAGON_GROWL"};
+        } else if (name.contains("CLICK")) {
+            fallbacks = new String[]{"UI_BUTTON_CLICK", "BLOCK_WOODEN_BUTTON_CLICK_ON", "WOOD_CLICK", "CLICK"};
+        } else if (name.contains("WOOL")) {
+            fallbacks = new String[]{"BLOCK_WOOL_BREAK", "DIG_WOOL"};
+        } else if (name.contains("STONE") && (name.contains("BREAK") || name.contains("DIG"))) {
+            fallbacks = new String[]{"BLOCK_STONE_BREAK", "DIG_STONE"};
+        }
+
+        for (String fallback : fallbacks) {
+            Sound fallbackSound = getSoundSafe(fallback);
+            if (fallbackSound != null) return fallbackSound;
+        }
+
+        Bukkit.getLogger().warning("[PixCore] Gagal memuat sound: " + name + " (Tidak ada fallback yang cocok di versi server ini)");
+        return null;
+    }
+
+    private Sound getSoundSafe(String name) {
+        if (name == null || name.isEmpty()) return null;
+        name = name.toUpperCase();
+
+        try {
+            Object[] constants = Sound.class.getEnumConstants();
+            if (constants != null) {
+                for (Object constant : constants) {
+                    if (((Enum<?>) constant).name().equals(name)) {
+                        return (Sound) constant;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            Field field = Sound.class.getField(name);
+            Object obj = field.get(null);
+            if (obj != null && Sound.class.isAssignableFrom(obj.getClass())) {
+                return (Sound) obj;
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            Class<?> namespacedKeyClass = Class.forName("org.bukkit.NamespacedKey");
+            Method minecraftMethod = namespacedKeyClass.getMethod("minecraft", String.class);
+            Object key = minecraftMethod.invoke(null, name.toLowerCase());
+
+            Class<?> registryClass = Class.forName("org.bukkit.Registry");
+            Field soundField = registryClass.getField("SOUND");
+            Object soundRegistry = soundField.get(null);
+
+            Method getMethod = soundRegistry.getClass().getMethod("get", namespacedKeyClass);
+            Sound s = (Sound) getMethod.invoke(soundRegistry, key);
+            if (s != null) return s;
+        } catch (Exception ignored) {}
+
+        try {
+            Method valueOfMethod = Sound.class.getMethod("valueOf", String.class);
+            return (Sound) valueOfMethod.invoke(null, name);
+        } catch (Exception ignored) {}
+
+        return null;
     }
 
     public boolean isInFight(Player player) {
@@ -605,7 +732,6 @@ public class PixCore extends JavaPlugin {
             String baseIconName = (baseIcon != null && baseIcon.hasItemMeta() && baseIcon.getItemMeta().hasDisplayName())
                     ? ChatColor.stripColor(baseIcon.getItemMeta().getDisplayName()).toLowerCase() : null;
 
-            // SISTEM BARU: Deteksi jika inventory HANYA berisi buku kit editor / item lobi
             boolean hasActualItems = false;
             for (ItemStack item : p.getInventory().getContents()) {
                 if (item != null && item.getType() != org.bukkit.Material.AIR) {
@@ -626,7 +752,6 @@ public class PixCore extends JavaPlugin {
                 }
             }
 
-            // Jika isinya KOSONG atau HANYA ADA BUKU LOBI, kita hapus lalu panggil kit secara paksa!
             if (!hasActualItems) {
                 p.getInventory().clear();
                 if (mBattleKitGiveKit != null) {
@@ -647,7 +772,6 @@ public class PixCore extends JavaPlugin {
 
             List<Object> allKits = new ArrayList<>();
 
-            // 1. Load StrikePractice native kits as fallback
             File spFolder = new File(getDataFolder().getParentFile(), "StrikePractice");
             File pdFile = new File(spFolder, "playerdata/" + p.getUniqueId().toString() + ".yml");
             if (pdFile.exists()) {
@@ -658,7 +782,6 @@ public class PixCore extends JavaPlugin {
                 }
             }
 
-            // 2. Load PixCore layouts and PREPEND them so they are checked first!
             File pixFile = new File(getDataFolder(), "layouts/" + p.getUniqueId().toString() + ".yml");
             if (pixFile.exists()) {
                 YamlConfiguration pixConfig = YamlConfiguration.loadConfiguration(pixFile);
@@ -744,7 +867,6 @@ public class PixCore extends JavaPlugin {
                             if (matched != null) {
                                 newContents[i] = matched;
                             } else {
-                                // Cegah buku tertempel jika kita sedang merestore layout TheBridge
                                 boolean isBook = false;
                                 if (target.getType().name().contains("BOOK") || target.getType().name().contains("NAME_TAG") || target.getType().name().contains("PAPER")) {
                                     if (target.hasItemMeta() && target.getItemMeta().hasDisplayName()) {
@@ -832,7 +954,7 @@ public class PixCore extends JavaPlugin {
         lastDamageTime.remove(uid);
         bowCooldowns.remove(uid);
         killCountCooldown.remove(uid);
-        frozenPlayers.remove(uid); // DITAMBAHKAN AGAR LEPAS DARI FREEZE JIKA KELUAR ATAU BERSIH
+        frozenPlayers.remove(uid);
         if (isQuit) {
             deathMessageCooldowns.remove(uid);
             lastBroadcastMessage.remove(uid);
@@ -845,13 +967,61 @@ public class PixCore extends JavaPlugin {
         }
     }
 
+    // --- FUNGSI UNTUK MEMUTAR SUARA END MATCH ---
+    public void playEndMatchSounds(Player player, boolean isVictory) {
+        if (!endMatchSoundEnabled || player == null || !player.isOnline()) return;
+
+        Sound primary = isVictory ? victorySoundPrimary : defeatSoundPrimary;
+        Sound secondary = isVictory ? victorySoundSecondary : defeatSoundSecondary;
+
+        // Putar suara secondary (contoh: FIREWORK_TWINKLE) HANYA SATU KALI di awal
+        if (secondary != null) {
+            try {
+                player.playSound(player.getLocation(), secondary, 1.0f, 1.0f);
+            } catch (Exception ignored) {}
+        }
+
+        // Loop untuk memutar suara primary (contoh: FIREWORK_LAUNCH) berkali-kali selama 3 detik
+        new BukkitRunnable() {
+            int elapsedTicks = 0;
+
+            @Override
+            public void run() {
+                // Berhenti jika player offline atau sudah 3 detik (60 ticks)
+                if (!player.isOnline() || elapsedTicks > 60) {
+                    this.cancel();
+                    return;
+                }
+
+                try {
+                    // Putar primary sound setiap eksekusi (10 ticks = 0.5 detik)
+                    if (primary != null) {
+                        player.playSound(player.getLocation(), primary, 1.0f, 1.0f);
+                    }
+                } catch (Exception ignored) {}
+
+                elapsedTicks += 10; // Tambah 10 tick setiap iterasi loop (0.5 detik berlalu)
+            }
+        }.runTaskTimer(this, 0L, 10L); // Jalankan task timer setiap 10 ticks (0.5 detik)
+    }
+
     public void sendCooldownMessage(Player player, String configKey) {
         long lastMsgTime = msgCooldowns.getOrDefault(player.getUniqueId(), 0L);
         if (System.currentTimeMillis() - lastMsgTime > 500) {
             String msg = getMsg(configKey);
-            if ((msg == null || msg.isEmpty()) && configKey.equals("bed-break-self")) {
-                msg = ChatColor.RED + "You can't break your own bed!";
+
+            if (msg == null || msg.isEmpty()) {
+                if (configKey.equals("bed-break-self")) {
+                    msg = ChatColor.RED + "You can't break your own bed!";
+                } else if (configKey.equals("block-place-denied-start")) {
+                    msg = ChatColor.RED + "You cannot place blocks while the match is starting!";
+                } else if (configKey.equals("block-place-denied")) {
+                    msg = ChatColor.RED + "You cannot place blocks while respawning!";
+                } else if (configKey.equals("block-break-denied-start")) {
+                    msg = ChatColor.RED + "You cannot break blocks while the match is starting!";
+                }
             }
+
             if (msg != null && !msg.isEmpty()) {
                 player.sendMessage(msg);
             }

@@ -8,8 +8,16 @@ messages:
   death:
     title: "&cYOU DIED!"
     subtitle-countdown: "&eRespawning in &d<seconds>s&e..."
+  bestof:
+    blue-wins:
+      title: "&9&lBLUE WINS!"
+      subtitle: "&9<blue_score> &8- &c<red_score>"
+    red-wins:
+      title: "&c&lRED WINS!"
+      subtitle: "&c<red_score> &8- &9<blue_score>"
   bed-break-self: "&cYou can't break your own bed!"
   block-place-denied: "&cYou cannot place blocks while respawning!"
+  block-place-denied-start: "&cYou cannot place blocks while the match is starting!"
   block-break-denied-start: "&cYou cannot break blocks while the match is starting!"
   build-limit-reached: "&cYou cannot place block at there!"
   build-outside-arena: "&cYou cannot place block outside the arena!"
@@ -198,3 +206,10 @@ settings:
   bed-restore-kits:
     - "bedfight"
     - "fireballfight"
+  end-match:
+    sounds:
+      enabled: true
+      victory-primary: FIREWORK_LAUNCH
+      victory-secondary: FIREWORK_TWINKLE_FAR
+      defeat-primary: FIREWORK_LAUNCH
+      defeat-secondary: FIREWORK_TWINKLE_FAR

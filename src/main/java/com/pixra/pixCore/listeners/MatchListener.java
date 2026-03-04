@@ -222,6 +222,10 @@ public class MatchListener implements Listener {
             Object fight = event.getClass().getMethod("getFight").invoke(event);
             if (fight == null) return;
 
+            if (plugin.duelScoreManager != null) {
+                plugin.duelScoreManager.onFightStart(fight);
+            }
+
             Object arena = (plugin.getMGetArena() != null) ? plugin.getMGetArena().invoke(fight) : null;
             List<Player> players = new ArrayList<>();
 
@@ -503,10 +507,10 @@ public class MatchListener implements Listener {
             Player winner = (Player) event.getClass().getMethod("getWinner").invoke(event);
             Player loser = (Player) event.getClass().getMethod("getLoser").invoke(event);
 
+            List<Player> fightPlayers = new ArrayList<>();
             if (fight != null) {
                 plugin.endedFightWinners.put(fight, winner != null ? winner.getUniqueId() : null);
 
-                List<Player> fightPlayers = new ArrayList<>();
                 if (plugin.getMGetPlayersInFight() != null) {
                     try { List<Player> temp = (List<Player>) plugin.getMGetPlayersInFight().invoke(fight); if (temp != null) fightPlayers.addAll(temp); } catch (Exception ignored) {}
                 }
@@ -549,6 +553,89 @@ public class MatchListener implements Listener {
                     plugin.playerMatchResults.put(p.getUniqueId(), result);
                 }
 
+                boolean isBestOf = false;
+                int blueScore = 0;
+                int redScore = 0;
+                boolean isBlueWinner = false;
+
+                try {
+                    Method getBestOfMethod = fight.getClass().getMethod("getBestOf");
+                    Object bestOf = getBestOfMethod.invoke(fight);
+                    if (bestOf != null) {
+
+                        int totalRounds = 1;
+                        try {
+                            Method getRoundsMethod = bestOf.getClass().getMethod("getRounds");
+                            totalRounds = (int) getRoundsMethod.invoke(bestOf);
+                        } catch (Exception ignored) {}
+
+                        if (totalRounds > 1) {
+                            isBestOf = true;
+                        }
+
+                        if (!isBestOf && fightPlayers.size() > 0) {
+                            String kitName = plugin.getKitName(fightPlayers.get(0));
+                            if (kitName != null) {
+                                String lower = kitName.toLowerCase();
+                                if (lower.contains("bridge") || lower.contains("mlgrush")) {
+                                    isBestOf = true;
+                                }
+                            }
+                        }
+
+                        Player bluePlayer = null;
+                        Player redPlayer = null;
+
+                        for (Player p : fightPlayers) {
+                            if (p == null) continue;
+                            String color = plugin.getTeamColorCode(p, fight);
+                            if (color.contains("9") || color.contains("b")) bluePlayer = p;
+                            else if (color.contains("c") || color.contains("d")) redPlayer = p;
+                        }
+
+                        if (bluePlayer == null && fightPlayers.size() > 0) bluePlayer = fightPlayers.get(0);
+                        if (redPlayer == null && fightPlayers.size() > 1) redPlayer = fightPlayers.get(fightPlayers.size() - 1);
+
+                        Map<UUID, Integer> oldScores = plugin.matchScores.getOrDefault(fight, new HashMap<>());
+
+                        try {
+                            Method getRoundsWon = bestOf.getClass().getMethod("getRoundsWon");
+                            Map<?, ?> scores = (Map<?, ?>) getRoundsWon.invoke(bestOf);
+                            if (scores != null && !scores.isEmpty()) {
+                                for (Map.Entry<?, ?> entry : scores.entrySet()) {
+                                    Object key = entry.getKey();
+                                    int score = entry.getValue() instanceof Number ? ((Number) entry.getValue()).intValue() : 0;
+
+                                    if (bluePlayer != null && (key.equals(bluePlayer.getUniqueId()) || key.equals(bluePlayer.getName()))) {
+                                        blueScore = score;
+                                    } else if (redPlayer != null && (key.equals(redPlayer.getUniqueId()) || key.equals(redPlayer.getName()))) {
+                                        redScore = score;
+                                    }
+                                }
+                            }
+                        } catch (Exception ignored) {}
+
+                        if (bluePlayer != null && blueScore == 0) blueScore = oldScores.getOrDefault(bluePlayer.getUniqueId(), 0);
+                        if (redPlayer != null && redScore == 0) redScore = oldScores.getOrDefault(redPlayer.getUniqueId(), 0);
+
+                        if (winner != null) {
+                            String wColor = plugin.getTeamColorCode(winner, fight);
+                            isBlueWinner = wColor.contains("9") || wColor.contains("b");
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                final boolean finalIsBestOf = isBestOf;
+                final int finalBlueScore = blueScore;
+                final int finalRedScore = redScore;
+                final boolean finalIsBlueWinner = isBlueWinner;
+
+                final boolean isDuelReq = plugin.duelScoreManager != null && plugin.duelScoreManager.isDuelRequestFight(fight);
+
+                if (isDuelReq && winner != null && loser != null) {
+                    plugin.duelScoreManager.onFightEnd(fight, winner, loser);
+                }
+
                 plugin.matchScores.remove(fight);
                 startedFights.remove(fight);
                 fightCountdownCooldown.remove(fight);
@@ -565,25 +652,100 @@ public class MatchListener implements Listener {
                         }
                     }
                 }.runTaskLater(plugin, 160L);
-            }
 
-            if (fight != null && plugin.getMGetArena() != null) {
-                try {
-                    Object arena = plugin.getMGetArena().invoke(fight);
-                    if (arena != null) {
-                        String arenaName = (String) arena.getClass().getMethod("getName").invoke(arena);
-                        forceFixBeds(arenaName, fight, 80L);
+                if (fight != null && plugin.getMGetArena() != null) {
+                    try {
+                        Object arena = plugin.getMGetArena().invoke(fight);
+                        if (arena != null) {
+                            String arenaName = (String) arena.getClass().getMethod("getName").invoke(arena);
+                            forceFixBeds(arenaName, fight, 80L);
+                        }
+                    } catch (Exception ex) {}
+                }
+
+                for (Player p : fightPlayers) {
+                    if (p == null) continue;
+
+                    boolean isWinner = false;
+                    boolean isLoser = false;
+
+                    if (winner != null) {
+                        isWinner = p.getUniqueId().equals(winner.getUniqueId());
+                        if (!isWinner && plugin.getMPlayersAreTeammates() != null) {
+                            try { isWinner = (boolean) plugin.getMPlayersAreTeammates().invoke(fight, p, winner); } catch (Exception ignored) {}
+                        }
                     }
-                } catch (Exception ex) {}
-            }
 
-            if (winner != null) {
-                plugin.cleanupPlayer(winner.getUniqueId(), false);
-                new BukkitRunnable() { @Override public void run() { if (winner.isOnline()) plugin.sendTitle(winner, plugin.getMsg("victory.title").replace("<player>", winner.getName()), plugin.getMsg("victory.subtitle").replace("<player>", winner.getName()), 10, 70, 20); } }.runTaskLater(plugin, 5L);
-            }
-            if (loser != null) {
-                plugin.cleanupPlayer(loser.getUniqueId(), false);
-                new BukkitRunnable() { @Override public void run() { if (loser.isOnline()) { String op = winner != null ? winner.getName() : "Unknown"; plugin.sendTitle(loser, plugin.getMsg("defeat.title").replace("<opponent>", op), plugin.getMsg("defeat.subtitle").replace("<opponent>", op), 10, 70, 20); } } }.runTaskLater(plugin, 5L);
+                    if (!isWinner && loser != null) {
+                        isLoser = true;
+                    }
+
+                    if (!isWinner && !isLoser) {
+                        continue;
+                    }
+
+                    plugin.cleanupPlayer(p.getUniqueId(), false);
+
+                    final boolean finalIsWinnerForSound = isWinner;
+                    final Player finalWinner = winner;
+                    final Player finalLoser = loser;
+                    final boolean finalIsDuelReq = isDuelReq;
+
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            if (p.isOnline()) {
+                                if (finalIsWinnerForSound) {
+                                    if (finalIsBestOf) {
+                                        String t = finalIsBlueWinner ? plugin.getMsg("bestof.blue-wins.title") : plugin.getMsg("bestof.red-wins.title");
+                                        String s = finalIsBlueWinner ? plugin.getMsg("bestof.blue-wins.subtitle") : plugin.getMsg("bestof.red-wins.subtitle");
+                                        if(t == null || t.isEmpty()) t = finalIsBlueWinner ? "&9&lBLUE WINS!" : "&c&lRED WINS!";
+                                        if(s == null || s.isEmpty()) s = finalIsBlueWinner ? "&9<blue_score> &8- &c<red_score>" : "&c<red_score> &8- &9<blue_score>";
+
+                                        s = s.replace("<blue_score>", String.valueOf(finalBlueScore)).replace("<red_score>", String.valueOf(finalRedScore));
+                                        plugin.sendTitle(p, ChatColor.translateAlternateColorCodes('&', t), ChatColor.translateAlternateColorCodes('&', s), 10, 70, 20);
+                                    } else if (finalIsDuelReq && finalLoser != null && plugin.duelScoreManager != null) {
+                                        Player myOpponent = finalLoser;
+
+                                        int myScore = plugin.duelScoreManager.getScore(p.getUniqueId(), myOpponent.getUniqueId());
+                                        int opScore = plugin.duelScoreManager.getScore(myOpponent.getUniqueId(), p.getUniqueId());
+
+                                        String title = ChatColor.translateAlternateColorCodes('&', "&e&lVICTORY!");
+                                        String subtitle = ChatColor.translateAlternateColorCodes('&', "&a" + myScore + " &8- &c" + opScore);
+                                        plugin.sendTitle(p, title, subtitle, 10, 70, 20);
+                                    } else {
+                                        plugin.sendTitle(p, plugin.getMsg("victory.title").replace("<player>", finalWinner != null ? finalWinner.getName() : "Unknown"), plugin.getMsg("victory.subtitle").replace("<player>", finalWinner != null ? finalWinner.getName() : "Unknown"), 10, 70, 20);
+                                    }
+                                    plugin.playEndMatchSounds(p, true);
+                                } else {
+                                    if (finalIsBestOf) {
+                                        String t = finalIsBlueWinner ? plugin.getMsg("bestof.blue-wins.title") : plugin.getMsg("bestof.red-wins.title");
+                                        String s = finalIsBlueWinner ? plugin.getMsg("bestof.blue-wins.subtitle") : plugin.getMsg("bestof.red-wins.subtitle");
+                                        if(t == null || t.isEmpty()) t = finalIsBlueWinner ? "&9&lBLUE WINS!" : "&c&lRED WINS!";
+                                        if(s == null || s.isEmpty()) s = finalIsBlueWinner ? "&9<blue_score> &8- &c<red_score>" : "&c<red_score> &8- &9<blue_score>";
+
+                                        s = s.replace("<blue_score>", String.valueOf(finalBlueScore)).replace("<red_score>", String.valueOf(finalRedScore));
+                                        plugin.sendTitle(p, ChatColor.translateAlternateColorCodes('&', t), ChatColor.translateAlternateColorCodes('&', s), 10, 70, 20);
+                                    } else if (finalIsDuelReq && finalWinner != null && plugin.duelScoreManager != null) {
+                                        Player myOpponent = finalWinner;
+
+                                        int myScore = plugin.duelScoreManager.getScore(p.getUniqueId(), myOpponent.getUniqueId());
+                                        int opScore = plugin.duelScoreManager.getScore(myOpponent.getUniqueId(), p.getUniqueId());
+
+                                        String title = ChatColor.translateAlternateColorCodes('&', "&c&lDEFEAT!");
+                                        String subtitle = ChatColor.translateAlternateColorCodes('&', "&c" + myScore + " &8- &a" + opScore);
+                                        plugin.sendTitle(p, title, subtitle, 10, 70, 20);
+                                    } else {
+                                        String op = finalWinner != null ? finalWinner.getName() : "Unknown";
+                                        plugin.sendTitle(p, plugin.getMsg("defeat.title").replace("<opponent>", op), plugin.getMsg("defeat.subtitle").replace("<opponent>", op), 10, 70, 20);
+                                    }
+                                    plugin.playEndMatchSounds(p, false);
+                                    p.getWorld().strikeLightningEffect(p.getLocation());
+                                }
+                            }
+                        }
+                    }.runTaskLater(plugin, 5L);
+                }
             }
         } catch (Exception e) {}
     }
@@ -785,7 +947,7 @@ public class MatchListener implements Listener {
                             }
                         }.runTaskTimer(plugin, 0L, 5L);
 
-                    } else {
+                    }  else {
                         String titleRaw = plugin.getMsg("round-end.title");
                         String subtitleRaw = plugin.getMsg("round-end.subtitle").replace("<winner>", winner.getName());
                         if (titleRaw == null || titleRaw.isEmpty()) titleRaw = "&aRound Over";

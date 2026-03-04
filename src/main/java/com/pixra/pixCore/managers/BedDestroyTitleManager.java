@@ -5,8 +5,6 @@ import org.bukkit.ChatColor;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 
-import java.lang.reflect.Field;
-
 public class BedDestroyTitleManager {
 
     private final PixCore plugin;
@@ -28,25 +26,14 @@ public class BedDestroyTitleManager {
 
         plugin.sendTitle(victim, title, subtitle, 10, 70, 20);
 
-        Sound soundToPlay = getSoundSafe("ENTITY_ENDER_DRAGON_GROWL");
-        if (soundToPlay == null) {
-            soundToPlay = getSoundSafe("ENDERDRAGON_GROWL");
-        }
+        // Menggunakan metode cross-version yang baru diperbarui
+        Sound soundToPlay = plugin.getSoundByName("ENTITY_ENDER_DRAGON_GROWL");
 
         if (soundToPlay != null) {
             try {
                 victim.playSound(victim.getLocation(), soundToPlay, 1.0f, 1.0f);
             } catch (Exception ignored) {
             }
-        }
-    }
-
-    private Sound getSoundSafe(String soundName) {
-        try {
-            Field field = Sound.class.getField(soundName.toUpperCase());
-            return (Sound) field.get(null);
-        } catch (Exception | Error e) {
-            return null;
         }
     }
 }

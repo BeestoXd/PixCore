@@ -188,23 +188,14 @@ public class BlockDisappearManager implements Listener {
     }
 
     private void playBreakSound(Block block) {
-        Sound sound = getSafeSound("BLOCK_WOOL_BREAK");
-        if (sound == null) sound = getSafeSound("DIG_WOOL");
-        if (sound == null) sound = getSafeSound("DIG_STONE");
+        // Menggunakan metode cross-version terbaru
+        Sound sound = plugin.getSoundByName("BLOCK_WOOL_BREAK");
+        if (sound == null) sound = plugin.getSoundByName("DIG_STONE");
 
         if (sound != null) {
             try {
                 block.getWorld().playSound(block.getLocation(), sound, 1f, 1f);
             } catch (Exception ignored) {}
-        }
-    }
-
-    private Sound getSafeSound(String name) {
-        try {
-            java.lang.reflect.Method method = Sound.class.getMethod("valueOf", String.class);
-            return (Sound) method.invoke(null, name);
-        } catch (Throwable t) {
-            return null;
         }
     }
 

@@ -46,7 +46,7 @@ public class PixCommand implements CommandExecutor {
                 if (plugin.hologramManager != null) plugin.hologramManager.reload();
                 if (plugin.leaderboardGUIManager != null) plugin.leaderboardGUIManager.loadConfig();
 
-                sender.sendMessage(ChatColor.GREEN + "[PixCore] Configuration reloaded successfully.");
+                sender.sendMessage(ChatColor.GREEN + "[PixCore] Plugin configurations reloaded!");
                 return true;
             }
 
@@ -56,204 +56,254 @@ public class PixCommand implements CommandExecutor {
                     return true;
                 }
 
-                if (sender instanceof Player) {
-                    Player p = (Player) sender;
-
-                    Material bedMat = Material.getMaterial("BED");
-                    if (bedMat == null) {
-                        bedMat = Material.getMaterial("RED_BED");
-                    }
-
-                    ItemStack bed = new ItemStack(bedMat);
-                    ItemMeta meta = bed.getItemMeta();
-                    meta.setDisplayName(ChatColor.AQUA + "" + ChatColor.BOLD + "Arena Bed Fixer");
-                    List<String> lore = new ArrayList<>();
-                    lore.add(ChatColor.GRAY + "Place this bed in your arena");
-                    lore.add(ChatColor.GRAY + "to permanently save its exact");
-                    lore.add(ChatColor.GRAY + "position for perfect restorations.");
-                    meta.setLore(lore);
-                    bed.setItemMeta(meta);
-
-                    p.getInventory().addItem(bed);
-                    p.sendMessage(ChatColor.GREEN + "[PixCore] You received the Arena Bed Fixer!");
-                } else {
+                if (!(sender instanceof Player)) {
                     sender.sendMessage(ChatColor.RED + "Only players can use this command.");
+                    return true;
                 }
+
+                Player player = (Player) sender;
+
+                // FIX: Menghindari error "Cannot resolve symbol 'BED'" pada versi API baru
+                Material bedMaterial = Material.getMaterial("RED_BED"); // Untuk 1.13+
+                if (bedMaterial == null) {
+                    bedMaterial = Material.getMaterial("BED"); // Untuk 1.8 - 1.12
+                }
+                if (bedMaterial == null) {
+                    bedMaterial = Material.STONE; // Fallback darurat agar tidak crash
+                }
+
+                ItemStack item = new ItemStack(bedMaterial);
+                ItemMeta meta = item.getItemMeta();
+                if (meta != null) {
+                    meta.setDisplayName(ChatColor.AQUA + "Arena Bed Fixer");
+                    List<String> lore = new ArrayList<>();
+                    lore.add(ChatColor.GRAY + "Break an extra bed part in arena");
+                    lore.add(ChatColor.GRAY + "to register it correctly!");
+                    meta.setLore(lore);
+                    item.setItemMeta(meta);
+                }
+
+                player.getInventory().addItem(item);
+                player.sendMessage(ChatColor.GREEN + "[PixCore] You received the Arena Bed Fixer.");
                 return true;
             }
 
-            // =====================================
-            // COMMAND: /pix leaderboard ...
-            // =====================================
             if (args[0].equalsIgnoreCase("leaderboard")) {
-                if (!sender.hasPermission("pixcore.admin")) {
-                    sender.sendMessage(ChatColor.RED + "You do not have permission.");
-                    return true;
-                }
-
-                if (args.length < 2) {
-                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove|enable|disable|gui|backup|backups|restore> ...");
-                    return true;
-                }
-
-                String action = args[1].toLowerCase();
-
-                // --- BACKUP & RESTORE COMMANDS ---
-                if (action.equals("backup")) {
-                    if (plugin.leaderboardManager != null) {
-                        plugin.leaderboardManager.backupData("manual");
-                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Data Leaderboard berhasil di-backup secara manual!");
-                    }
-                    return true;
-                }
-
-                if (action.equals("backups")) {
-                    if (plugin.leaderboardManager != null) {
-                        List<String> backups = plugin.leaderboardManager.getBackupFiles();
-                        sender.sendMessage(ChatColor.YELLOW + "=== Available Backups ===");
-                        if (backups.isEmpty()) {
-                            sender.sendMessage(ChatColor.GRAY + "Belum ada file backup.");
-                        } else {
-                            for (int i = 0; i < Math.min(backups.size(), 10); i++) {
-                                sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.AQUA + backups.get(i));
-                            }
-                            if (backups.size() > 10) {
-                                sender.sendMessage(ChatColor.GRAY + "... dan " + (backups.size() - 10) + " lainnya.");
-                            }
-                        }
-                    }
-                    return true;
-                }
-
-                if (action.equals("restore")) {
-                    if (args.length < 3) {
-                        sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard restore <nama_file.yml>");
+                if (args.length >= 2 && args[1].equalsIgnoreCase("add")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
                         return true;
                     }
-                    String fileName = args[2];
-                    if (!fileName.endsWith(".yml")) fileName += ".yml";
-
-                    if (plugin.leaderboardManager != null) {
-                        boolean success = plugin.leaderboardManager.restoreData(fileName);
-                        if (success) {
-                            sender.sendMessage(ChatColor.GREEN + "[PixCore] Sukses mere-store Leaderboard dari " + fileName + "!");
-                            if (plugin.hologramManager != null) plugin.hologramManager.reload();
-                        } else {
-                            sender.sendMessage(ChatColor.RED + "[PixCore] Gagal restore! File backup '" + fileName + "' tidak ditemukan.");
-                        }
-                    }
-                    return true;
-                }
-
-                if (action.equals("enable") || action.equals("disable")) {
-                    boolean enable = action.equals("enable");
-                    if (args.length == 2) {
-                        if (plugin.leaderboardManager != null) {
-                            plugin.leaderboardManager.setGlobalEnabled(enable);
-                            sender.sendMessage(ChatColor.GREEN + "[PixCore] Leaderboard (All Kits) globally " + (enable ? "enabled" : "disabled") + "!");
-                        }
-                    } else {
-                        String kitName = ChatColor.stripColor(args[2]).toLowerCase();
-                        if (plugin.leaderboardManager != null) {
-                            plugin.leaderboardManager.setKitEnabled(kitName, enable);
-                            sender.sendMessage(ChatColor.GREEN + "[PixCore] Leaderboard for kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' has been " + (enable ? "enabled" : "disabled") + "!");
-                        }
-                    }
-                    return true;
-                }
-
-                // NEW GUI SETUP COMMANDS
-                if (action.equals("gui")) {
-                    if (args.length < 4) {
-                        sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard gui <set|remove> <kit> [slot]");
-                        return true;
-                    }
-                    String guiAction = args[2].toLowerCase();
-                    String kitName = ChatColor.stripColor(args[3]).toLowerCase();
-
-                    if (guiAction.equals("set")) {
-                        if (!(sender instanceof Player)) {
-                            sender.sendMessage(ChatColor.RED + "Only players can set GUI items.");
-                            return true;
-                        }
-                        Player p = (Player) sender;
-                        if (args.length < 5) {
-                            p.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard gui set <kit> <slot>");
-                            return true;
-                        }
-                        int slot;
-                        try { slot = Integer.parseInt(args[4]); } catch (Exception e) { p.sendMessage(ChatColor.RED + "Slot must be number."); return true; }
-
-                        ItemStack item;
-                        try { item = p.getInventory().getItemInMainHand(); }
-                        catch (NoSuchMethodError e) { item = p.getItemInHand(); }
-
-                        if (item == null || item.getType() == Material.AIR) {
-                            p.sendMessage(ChatColor.RED + "You must hold an item in your hand!");
-                            return true;
-                        }
-
-                        if (plugin.leaderboardGUIManager != null) {
-                            plugin.leaderboardGUIManager.setGuiItem(kitName, slot, item);
-                            p.sendMessage(ChatColor.GREEN + "[PixCore] GUI item for '" + kitName + "' set successfully at slot " + slot + "!");
-                        }
-                    } else if (guiAction.equals("remove")) {
-                        if (plugin.leaderboardGUIManager != null) {
-                            plugin.leaderboardGUIManager.removeGuiItem(kitName);
-                            sender.sendMessage(ChatColor.GREEN + "[PixCore] GUI item for '" + kitName + "' removed.");
-                        }
-                    } else {
-                        sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard gui <set|remove> <kit> [slot]");
-                    }
-                    return true;
-                }
-
-                // POS COMMANDS (HOLOGRAMS)
-                if (args.length < 4) {
-                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove> <kit_name> <pos>");
-                    return true;
-                }
-
-                String kitName = ChatColor.stripColor(args[2]).toLowerCase();
-
-                int pos;
-                try {
-                    pos = Integer.parseInt(args[3]);
-                } catch (NumberFormatException e) {
-                    sender.sendMessage(ChatColor.RED + "Posisi <pos> harus berupa angka! Contoh: 1");
-                    return true;
-                }
-
-                if (action.equals("add")) {
                     if (!(sender instanceof Player)) {
-                        sender.sendMessage(ChatColor.RED + "Only players in-game can add a leaderboard hologram.");
+                        sender.sendMessage(ChatColor.RED + "Only players can use this command.");
                         return true;
                     }
-                    Player p = (Player) sender;
 
-                    if (plugin.hologramManager != null) {
-                        plugin.hologramManager.createStaticHologram(p, kitName, pos);
-                        p.sendMessage(ChatColor.GREEN + "[PixCore] Winstreak Leaderboard untuk kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' di posisi " + pos + " berhasil ditambahkan!");
-                    } else {
-                        p.sendMessage(ChatColor.RED + "HologramManager belum terinisialisasi.");
+                    if (args.length >= 4) {
+                        String kitName = args[2];
+                        int pos;
+                        try {
+                            pos = Integer.parseInt(args[3]);
+                        } catch (NumberFormatException e) {
+                            sender.sendMessage(ChatColor.RED + "Position must be a number!");
+                            return true;
+                        }
+
+                        plugin.hologramManager.createStaticHologram((Player) sender, kitName, pos);
+                        return true;
                     }
-
-                } else if (action.equals("remove")) {
-                    if (plugin.hologramManager != null) {
-                        plugin.hologramManager.removeStaticHologram(kitName, pos);
-                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Winstreak Leaderboard untuk kit '" + ChatColor.YELLOW + kitName + ChatColor.GREEN + "' di posisi " + pos + " berhasil dihapus!");
-                    } else {
-                        sender.sendMessage(ChatColor.RED + "HologramManager belum terinisialisasi.");
-                    }
-
-                } else {
-                    sender.sendMessage(ChatColor.YELLOW + "Usage: /pix leaderboard <add|remove> <kit_name> <pos>");
+                    sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard add <kit> <pos>");
+                    return true;
                 }
-                return true;
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("remove")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+
+                    if (args.length >= 4) {
+                        String kitName = args[2];
+                        int pos;
+                        try {
+                            pos = Integer.parseInt(args[3]);
+                        } catch (NumberFormatException e) {
+                            sender.sendMessage(ChatColor.RED + "Position must be a number!");
+                            return true;
+                        }
+
+                        plugin.hologramManager.removeStaticHologram(kitName, pos);
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Hologram " + kitName + " (Pos " + pos + ") removed.");
+                        return true;
+                    }
+                    sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard remove <kit> <pos>");
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("enable")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+                    if (args.length >= 3) {
+                        String kitName = args[2];
+                        plugin.leaderboardManager.setKitEnabled(kitName, true);
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Leaderboard for kit " + kitName + " has been ENABLED.");
+                    } else {
+                        plugin.leaderboardManager.setGlobalEnabled(true);
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Global Leaderboards have been ENABLED.");
+                    }
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("disable")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+                    if (args.length >= 3) {
+                        String kitName = args[2];
+                        plugin.leaderboardManager.setKitEnabled(kitName, false);
+                        sender.sendMessage(ChatColor.YELLOW + "[PixCore] Leaderboard for kit " + kitName + " has been DISABLED.");
+                    } else {
+                        plugin.leaderboardManager.setGlobalEnabled(false);
+                        sender.sendMessage(ChatColor.YELLOW + "[PixCore] Global Leaderboards have been DISABLED.");
+                    }
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("gui")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+
+                    if (args.length >= 5 && args[2].equalsIgnoreCase("set")) {
+                        if (!(sender instanceof Player)) {
+                            sender.sendMessage(ChatColor.RED + "Only players can use this command.");
+                            return true;
+                        }
+                        Player player = (Player) sender;
+                        String kitName = args[3];
+                        int slot;
+                        try {
+                            slot = Integer.parseInt(args[4]);
+                        } catch (NumberFormatException e) {
+                            sender.sendMessage(ChatColor.RED + "Slot must be a number!");
+                            return true;
+                        }
+
+                        ItemStack hand = player.getItemInHand();
+                        if (hand == null || hand.getType() == Material.AIR) {
+                            sender.sendMessage(ChatColor.RED + "You must hold an item in your hand to set it as icon!");
+                            return true;
+                        }
+
+                        plugin.leaderboardGUIManager.setGuiItem(kitName, slot, hand);
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Kit " + kitName + " added to GUI at slot " + slot + ".");
+                        return true;
+                    }
+
+                    if (args.length >= 4 && args[2].equalsIgnoreCase("remove")) {
+                        String kitName = args[3];
+                        plugin.leaderboardGUIManager.removeGuiItem(kitName);
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Kit " + kitName + " removed from GUI.");
+                        return true;
+                    }
+
+                    sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard gui set <kit> <slot> OR /pix leaderboard gui remove <kit>");
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("backup")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+
+                    String prefix = args.length >= 3 ? args[2] : "manual";
+                    plugin.leaderboardManager.backupData(prefix);
+                    sender.sendMessage(ChatColor.GREEN + "[PixCore] Data leaderboard berhasil dibackup dengan prefix '" + prefix + "'.");
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("backups")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+
+                    List<String> files = plugin.leaderboardManager.getBackupFiles();
+                    if (files.isEmpty()) {
+                        sender.sendMessage(ChatColor.YELLOW + "Belum ada file backup.");
+                        return true;
+                    }
+
+                    sender.sendMessage(ChatColor.GREEN + "=== File Backup Leaderboard ===");
+                    for (int i = 0; i < Math.min(10, files.size()); i++) {
+                        sender.sendMessage(ChatColor.GRAY + "- " + ChatColor.AQUA + files.get(i));
+                    }
+                    if (files.size() > 10) {
+                        sender.sendMessage(ChatColor.GRAY + "... dan " + (files.size() - 10) + " file lainnya.");
+                    }
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("restore")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+
+                    if (args.length < 3) {
+                        sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard restore <nama_file.yml>");
+                        return true;
+                    }
+
+                    String fileName = args[2];
+                    if (plugin.leaderboardManager.restoreData(fileName)) {
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Data leaderboard berhasil dipulihkan dari " + fileName + "!");
+                        if (plugin.hologramManager != null) plugin.hologramManager.reload();
+                    } else {
+                        sender.sendMessage(ChatColor.RED + "[PixCore] Gagal memulihkan data. File tidak ditemukan.");
+                    }
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("reset")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+
+                    if (args.length == 3 && args[2].equalsIgnoreCase("all")) {
+                        plugin.leaderboardManager.resetAllData();
+                        if (plugin.hologramManager != null) plugin.hologramManager.reload();
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Berhasil menghapus SELURUH data leaderboard (Winstreak, Wins, Kills untuk semua Kits)!");
+                        return true;
+                    }
+
+                    if (args.length >= 4) {
+                        String category = args[2].toLowerCase(); // ws, wins, kills
+                        String kitName = args[3];
+
+                        if (!category.equals("ws") && !category.equals("winstreak") && !category.equals("wins") && !category.equals("kills")) {
+                            sender.sendMessage(ChatColor.RED + "Kategori tidak valid! Gunakan: ws, wins, atau kills.");
+                            return true;
+                        }
+
+                        plugin.leaderboardManager.resetCategoryData(category, kitName);
+                        if (plugin.hologramManager != null) plugin.hologramManager.reload();
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Berhasil menghapus data " + category.toUpperCase() + " untuk kit " + kitName.toUpperCase() + "!");
+                        return true;
+                    }
+
+                    sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard reset <ws|wins|kills|all> [kit]");
+                    return true;
+                }
             }
         }
 
-        // Tampilkan semua Help usage
         sender.sendMessage(ChatColor.YELLOW + "=== PixCore Commands ===");
         sender.sendMessage(ChatColor.YELLOW + "/pix reload" + ChatColor.GRAY + " - Reload configurations");
         sender.sendMessage(ChatColor.YELLOW + "/pix bed" + ChatColor.GRAY + " - Get the custom Arena Bed Fixer");
@@ -266,6 +316,9 @@ public class PixCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard backup" + ChatColor.GRAY + " - Backup data manual");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard backups" + ChatColor.GRAY + " - List data backup");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard restore <file>" + ChatColor.GRAY + " - Restore data");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard reset <ws/wins/kills> <kit>" + ChatColor.GRAY + " - Reset specific data");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard reset all" + ChatColor.GRAY + " - Reset ALL leaderboard data");
+
         return true;
     }
 }

@@ -69,6 +69,17 @@ public class LeaderboardManager {
         if (disabledKits == null) {
             disabledKits = new ArrayList<>();
         }
+
+        migrateOldData();
+    }
+
+    private void migrateOldData() {
+        if (dataConfig.contains("stats.daily")) {
+            dataConfig.set("winstreak.daily", dataConfig.getConfigurationSection("stats.daily"));
+            dataConfig.set("stats", null);
+            saveData();
+            plugin.getLogger().info("Migrated old leaderboard stats to new format (Weekly & Monthly winstreaks deleted).");
+        }
     }
 
     public void saveData() {
@@ -136,6 +147,36 @@ public class LeaderboardManager {
                 .collect(Collectors.toList());
     }
 
+    public void resetAllData() {
+        backupData("pre-reset-all");
+        dataConfig.set("winstreak", null);
+        dataConfig.set("wins", null);
+        dataConfig.set("kills", null);
+        dataConfig.set("names", null);
+        saveData();
+    }
+
+    public void resetCategoryData(String category, String kitName) {
+        kitName = ChatColor.stripColor(kitName).toLowerCase();
+        backupData("pre-reset-" + category + "-" + kitName);
+
+        if (category.equalsIgnoreCase("ws") || category.equalsIgnoreCase("winstreak")) {
+            dataConfig.set("winstreak.daily." + kitName, null);
+        } else if (category.equalsIgnoreCase("wins")) {
+            dataConfig.set("wins.daily." + kitName, null);
+            dataConfig.set("wins.weekly." + kitName, null);
+            dataConfig.set("wins.monthly." + kitName, null);
+            dataConfig.set("wins.lifetime." + kitName, null);
+        } else if (category.equalsIgnoreCase("kills")) {
+            dataConfig.set("kills.daily." + kitName, null);
+            dataConfig.set("kills.weekly." + kitName, null);
+            dataConfig.set("kills.monthly." + kitName, null);
+            dataConfig.set("kills.lifetime." + kitName, null);
+        }
+
+        saveData();
+    }
+
     public void setGlobalEnabled(boolean enabled) {
         this.globalEnabled = enabled;
         saveData();
@@ -168,23 +209,27 @@ public class LeaderboardManager {
         boolean changed = false;
 
         if (!today.toString().equals(currentDailyDate)) {
-            dataConfig.set("stats.daily", null);
+            dataConfig.set("winstreak.daily", null);
+            dataConfig.set("wins.daily", null);
+            dataConfig.set("kills.daily", null);
             currentDailyDate = today.toString();
-            plugin.getLogger().info("Daily Winstreak Leaderboard has been reset.");
+            plugin.getLogger().info("Daily Leaderboards have been reset.");
             changed = true;
         }
 
         if (!startOfWeek.toString().equals(currentWeeklyDate)) {
-            dataConfig.set("stats.weekly", null);
+            dataConfig.set("wins.weekly", null);
+            dataConfig.set("kills.weekly", null);
             currentWeeklyDate = startOfWeek.toString();
-            plugin.getLogger().info("Weekly Winstreak Leaderboard has been reset.");
+            plugin.getLogger().info("Weekly Leaderboards have been reset.");
             changed = true;
         }
 
         if (!thisMonth.toString().equals(currentMonthlyDate)) {
-            dataConfig.set("stats.monthly", null);
+            dataConfig.set("wins.monthly", null);
+            dataConfig.set("kills.monthly", null);
             currentMonthlyDate = thisMonth.toString();
-            plugin.getLogger().info("Monthly Winstreak Leaderboard has been reset.");
+            plugin.getLogger().info("Monthly Leaderboards have been reset.");
             changed = true;
         }
 
@@ -193,7 +238,6 @@ public class LeaderboardManager {
 
     public void addWin(UUID playerUUID, String playerName, String kitName) {
         if (!isKitEnabled(kitName)) return;
-
         checkResets();
 
         if (kitName == null || kitName.isEmpty()) return;
@@ -201,37 +245,51 @@ public class LeaderboardManager {
 
         dataConfig.set("names." + playerUUID.toString(), playerName);
 
-        String dailyPath = "stats.daily." + kitName + "." + playerUUID.toString();
-        dataConfig.set(dailyPath, dataConfig.getInt(dailyPath, 0) + 1);
+        String wsPath = "winstreak.daily." + kitName + "." + playerUUID.toString();
+        dataConfig.set(wsPath, dataConfig.getInt(wsPath, 0) + 1);
 
-        String weeklyPath = "stats.weekly." + kitName + "." + playerUUID.toString();
-        dataConfig.set(weeklyPath, dataConfig.getInt(weeklyPath, 0) + 1);
+        String[] periods = {"daily", "weekly", "monthly", "lifetime"};
+        for (String period : periods) {
+            String wPath = "wins." + period + "." + kitName + "." + playerUUID.toString();
+            dataConfig.set(wPath, dataConfig.getInt(wPath, 0) + 1);
+        }
 
-        String monthlyPath = "stats.monthly." + kitName + "." + playerUUID.toString();
-        dataConfig.set(monthlyPath, dataConfig.getInt(monthlyPath, 0) + 1);
+        saveData();
+    }
+
+    public void addKill(UUID playerUUID, String playerName, String kitName) {
+        if (!isKitEnabled(kitName)) return;
+        checkResets();
+
+        if (kitName == null || kitName.isEmpty()) return;
+        kitName = ChatColor.stripColor(kitName).toLowerCase();
+
+        dataConfig.set("names." + playerUUID.toString(), playerName);
+
+        String[] periods = {"daily", "weekly", "monthly", "lifetime"};
+        for (String period : periods) {
+            String kPath = "kills." + period + "." + kitName + "." + playerUUID.toString();
+            dataConfig.set(kPath, dataConfig.getInt(kPath, 0) + 1);
+        }
 
         saveData();
     }
 
     public void resetStreak(UUID playerUUID, String kitName) {
         if (!isKitEnabled(kitName)) return;
-
         checkResets();
 
         if (kitName == null || kitName.isEmpty()) return;
         kitName = ChatColor.stripColor(kitName).toLowerCase();
 
-        dataConfig.set("stats.daily." + kitName + "." + playerUUID.toString(), 0);
-        dataConfig.set("stats.weekly." + kitName + "." + playerUUID.toString(), 0);
-        dataConfig.set("stats.monthly." + kitName + "." + playerUUID.toString(), 0);
+        dataConfig.set("winstreak.daily." + kitName + "." + playerUUID.toString(), 0);
 
         saveData();
     }
 
     public String getHighestWinstreakString(UUID playerUUID) {
         checkResets();
-
-        ConfigurationSection dailySection = dataConfig.getConfigurationSection("stats.daily");
+        ConfigurationSection dailySection = dataConfig.getConfigurationSection("winstreak.daily");
         if (dailySection == null) return "0";
 
         int maxScore = 0;
@@ -240,7 +298,7 @@ public class LeaderboardManager {
         for (String kit : dailySection.getKeys(false)) {
             if (!isKitEnabled(kit)) continue;
 
-            int score = dataConfig.getInt("stats.daily." + kit + "." + playerUUID.toString(), 0);
+            int score = dataConfig.getInt("winstreak.daily." + kit + "." + playerUUID.toString(), 0);
             if (score > maxScore) {
                 maxScore = score;
                 bestKit = kit;
@@ -255,15 +313,10 @@ public class LeaderboardManager {
         return "0";
     }
 
-    public List<Map.Entry<String, Integer>> getTop5(String period, String kitName) {
-        return getTop(period, kitName, 5);
-    }
-
-    public List<Map.Entry<String, Integer>> getTop(String period, String kitName, int limit) {
+    public List<Map.Entry<String, Integer>> getTop(String category, String period, String kitName, int limit) {
         checkResets();
-
         kitName = ChatColor.stripColor(kitName).toLowerCase();
-        ConfigurationSection section = dataConfig.getConfigurationSection("stats." + period + "." + kitName);
+        ConfigurationSection section = dataConfig.getConfigurationSection(category + "." + period + "." + kitName);
         if (section == null) return new ArrayList<>();
 
         Map<String, Integer> scores = new HashMap<>();

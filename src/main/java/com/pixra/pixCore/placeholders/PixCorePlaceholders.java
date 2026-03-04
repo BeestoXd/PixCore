@@ -8,6 +8,8 @@ import org.bukkit.entity.Player;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public class PixCorePlaceholders extends PlaceholderExpansion {
 
@@ -144,19 +146,29 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
                         if (lowerKit.contains("bed") || lowerKit.contains("fireball")) {
                             isBedwars = true;
                         }
-                        if (lowerKit.contains("bridge")) {
+                        if (lowerKit.contains("bridge") || lowerKit.contains("mlgrush") || lowerKit.contains("stickfight")) {
                             isBestOf = true;
                         }
                     }
                 }
             } catch (Exception ignored) {}
 
-            try {
-                Class<?> bestOfClass = Class.forName("ga.strikepractice.fights.BestOfFight");
-                if (bestOfClass.isInstance(fight)) {
-                    isBestOf = true;
-                }
-            } catch (Exception ignored) {}
+            // Fix konsistensi isBestOf agar selaras dengan MatchListener (cek getRounds)
+            if (!isBestOf) {
+                try {
+                    Method mGetBestOf = fight.getClass().getMethod("getBestOf");
+                    Object bestOf = mGetBestOf.invoke(fight);
+                    if (bestOf != null) {
+                        int rounds = 1;
+                        try {
+                            rounds = (int) bestOf.getClass().getMethod("getRounds").invoke(bestOf);
+                        } catch (Exception ignored) {}
+                        if (rounds > 1) {
+                            isBestOf = true;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
         }
 
         if (identifier.startsWith("board_")) {
@@ -170,14 +182,37 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
             List<String> lines = new ArrayList<>();
 
             if (isEnded) {
-                lines.add(plugin.getPlayerMatchResults().get(player.getUniqueId()));
+                String matchResult = plugin.getPlayerMatchResults().get(player.getUniqueId());
+                lines.add(matchResult);
+
+                // Tambahkan pengecekan spesifik: Jika Duel Request, tampilkan skor
+                if (plugin.duelScoreManager != null && plugin.duelScoreManager.hasRecentDuel(player.getUniqueId())) {
+                    // Cari siapa lawannya. Karena tidak ada objek fight langsung di akhir match,
+                    // kita bisa menggunakan riwayat terakhir dari duelScoreManager
+                    UUID opponentUuid = plugin.duelScoreManager.getLastOpponent(player.getUniqueId());
+
+                    if (opponentUuid != null) {
+                        int myScore = plugin.duelScoreManager.getScore(player.getUniqueId(), opponentUuid);
+                        int opponentScore = plugin.duelScoreManager.getScore(opponentUuid, player.getUniqueId());
+
+                        boolean isVictory = matchResult.contains("VICTORY");
+
+                        lines.add(""); // Jarak 1 baris
+
+                        // Menentukan warna: Hijau untuk pemenang (atau saya sendiri), Merah untuk lawan (atau kalah)
+                        if (isVictory) {
+                            lines.add("&a" + myScore + " &8- &c" + opponentScore);
+                        } else {
+                            lines.add("&c" + myScore + " &8- &a" + opponentScore);
+                        }
+                    }
+                }
+
             } else {
                 if (isBedwars) {
                     lines.add("&9B Blue: " + getBedStatusRaw(fight, true, player, p1) + getTeamIndicatorRaw(fight, true, player, p1));
                     lines.add("&cR Red: " + getBedStatusRaw(fight, false, player, p1) + getTeamIndicatorRaw(fight, false, player, p1));
                     lines.add("");
-                    lines.add("&fKills: &a" + plugin.getPlayerMatchKills().getOrDefault(player.getUniqueId(), 0));
-                } else if (isBestOf) {
                     lines.add("&fKills: &a" + plugin.getPlayerMatchKills().getOrDefault(player.getUniqueId(), 0));
                 }
             }
@@ -198,6 +233,43 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
             if (isEnded) return "";
             if (!isBedwars && !isBestOf) return "";
             return String.valueOf(plugin.getPlayerMatchKills().getOrDefault(player.getUniqueId(), 0));
+        }
+
+        if (identifier.equalsIgnoreCase("goals")) {
+            if (isEnded) return "";
+            if (!isBestOf) return "";
+            int score = 0;
+            if (fight != null) {
+                try {
+                    Method getBestOf = fight.getClass().getMethod("getBestOf");
+                    Object bestOf = getBestOf.invoke(fight);
+                    if (bestOf != null) {
+                        Method getRoundsWon = bestOf.getClass().getMethod("getRoundsWon");
+                        Object roundsObj = getRoundsWon.invoke(bestOf);
+
+                        if (roundsObj instanceof Map) {
+                            Map<?, ?> roundsMap = (Map<?, ?>) roundsObj;
+                            for (Map.Entry<?, ?> entry : roundsMap.entrySet()) {
+                                Object key = entry.getKey();
+                                int val = entry.getValue() instanceof Number ? ((Number) entry.getValue()).intValue() : 0;
+
+                                if (key instanceof UUID && key.equals(player.getUniqueId())) {
+                                    score = val;
+                                } else if (key instanceof String && key.equals(player.getName())) {
+                                    score = val;
+                                } else if (key instanceof Player && ((Player) key).getUniqueId().equals(player.getUniqueId())) {
+                                    score = val;
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                if (score == 0 && plugin.matchScores.containsKey(fight)) {
+                    score = plugin.matchScores.get(fight).getOrDefault(player.getUniqueId(), 0);
+                }
+            }
+            return String.valueOf(score);
         }
 
         if (fight == null || p1 == null) return "";

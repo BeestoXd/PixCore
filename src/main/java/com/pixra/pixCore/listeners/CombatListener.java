@@ -276,6 +276,13 @@ public class CombatListener implements Listener {
         }
         if (killer != null && !killer.getUniqueId().equals(vUid)) {
             plugin.playerMatchKills.put(killer.getUniqueId(), plugin.playerMatchKills.getOrDefault(killer.getUniqueId(), 0) + 1);
+
+            if (plugin.leaderboardManager != null) {
+                String kitName = plugin.getKitName(killer);
+                if (kitName != null) {
+                    plugin.leaderboardManager.addKill(killer.getUniqueId(), killer.getName(), kitName);
+                }
+            }
         }
     }
 
@@ -356,7 +363,6 @@ public class CombatListener implements Listener {
     private boolean isPlayerBedBroken(Player player, Object fight) {
         if (fight == null || plugin.getMIsBed1Broken() == null || plugin.getMIsBed2Broken() == null) return false;
 
-        // BUG FIX: Cek khusus untuk mode PartySplit
         if (plugin.partySplitManager != null && plugin.partySplitManager.isPartySplit(fight)) {
             return plugin.partySplitManager.isBedBroken(player, fight);
         }

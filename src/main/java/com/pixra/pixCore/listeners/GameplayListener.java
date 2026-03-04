@@ -33,9 +33,24 @@ public class GameplayListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
+
         if (plugin.frozenPlayers.contains(player.getUniqueId()) || plugin.activeCountdowns.containsKey(player.getUniqueId())) {
             event.setCancelled(true);
             player.updateInventory();
+
+            if (event.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) {
+                if (event.getItem() != null && event.getItem().getType().isBlock()) {
+                    if (plugin.frozenPlayers.contains(player.getUniqueId())) {
+                        plugin.sendCooldownMessage(player, "block-place-denied-start");
+                    } else {
+                        plugin.sendCooldownMessage(player, "block-place-denied");
+                    }
+                }
+            } else if (event.getAction() == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK) {
+                if (plugin.frozenPlayers.contains(player.getUniqueId())) {
+                    plugin.sendCooldownMessage(player, "block-break-denied-start");
+                }
+            }
         }
     }
 
@@ -165,7 +180,13 @@ public class GameplayListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onBlockPlaceBuildLimit(BlockPlaceEvent event) {
         Player player = event.getPlayer();
-        if (plugin.frozenPlayers.contains(player.getUniqueId()) || plugin.activeCountdowns.containsKey(player.getUniqueId())) {
+
+        if (plugin.frozenPlayers.contains(player.getUniqueId())) {
+            event.setCancelled(true);
+            plugin.sendCooldownMessage(player, "block-place-denied-start");
+            return;
+        }
+        if (plugin.activeCountdowns.containsKey(player.getUniqueId())) {
             event.setCancelled(true);
             plugin.sendCooldownMessage(player, "block-place-denied");
             return;
