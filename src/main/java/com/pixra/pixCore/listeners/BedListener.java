@@ -138,10 +138,8 @@ public class BedListener implements Listener {
                         boolean isMlgRush = kitName != null && (kitName.equalsIgnoreCase("mlgrush") || kitName.equalsIgnoreCase("mlgrushelo"));
 
                         if (isMlgRush && plugin.bestOfReflectionLoaded && plugin.getClsBestOfFight() != null && plugin.getClsBestOfFight().isInstance(fight)) {
-                            // Sesuai permintaan: bed tidak hancur sepenuhnya
                             event.setCancelled(true);
 
-                            // Mencegah block ditekan 2x dan ter-call berulang kali
                             if (mlgRushCooldown.containsKey(player.getUniqueId()) && System.currentTimeMillis() - mlgRushCooldown.get(player.getUniqueId()) < 2000) {
                                 return;
                             }
@@ -150,7 +148,6 @@ public class BedListener implements Listener {
                             try {
                                 Player opponent = null;
 
-                                // 1. Cari opponent dengan iterasi players in fight (Mencegah error NullPointerException nama)
                                 if (plugin.getMGetPlayersInFight() != null) {
                                     List<Player> fPlayers = (List<Player>) plugin.getMGetPlayersInFight().invoke(fight);
                                     if (fPlayers != null) {
@@ -163,7 +160,6 @@ public class BedListener implements Listener {
                                     }
                                 }
 
-                                // 2. Fallback mencari opponent
                                 if (opponent == null && plugin.getMGetOpponents() != null) {
                                     List<String> opponents = (List<String>) plugin.getMGetOpponents().invoke(fight, player);
                                     if (opponents != null && !opponents.isEmpty()) {
@@ -172,18 +168,13 @@ public class BedListener implements Listener {
                                 }
 
                                 if (opponent != null) {
-                                    // Beri notifikasi ke pemain
                                     plugin.sendTitle(player, "§a§lBED DESTROYED!", "§fYou scored a point!", 5, 30, 10);
                                     plugin.sendTitle(opponent, "§c§lBED DESTROYED!", "§f" + player.getName() + " scored a point!", 5, 30, 10);
 
-                                    // Memberikan lethal damage ke lawan adalah cara TERBAIK dan PALING NATIVE
-                                    // agar StrikePractice mereset round, menambah poin, dan teleport spawn.
-                                    // StrikePractice akan mencegat damage ini, lalu menghitungnya sebagai Kemenangan Ronde!
                                     opponent.setNoDamageTicks(0);
                                     opponent.setHealth(0.1);
                                     opponent.damage(10000.0, player);
 
-                                    // Backup menggunakan reflection handleDeath jika listener SP gagal menangkap
                                     Player finalOpponent = opponent;
                                     Object finalFight = fight;
                                     Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -195,7 +186,6 @@ public class BedListener implements Listener {
                                     }, 2L);
 
                                 } else {
-                                    // Fallback ekstrim jika opponent null (seharusnya tidak terjadi)
                                     Object bestOf = plugin.getMGetBestOf().invoke(fight);
                                     if (bestOf != null && plugin.getMHandleWin() != null) {
                                         plugin.getMHandleWin().invoke(bestOf, player.getUniqueId());
