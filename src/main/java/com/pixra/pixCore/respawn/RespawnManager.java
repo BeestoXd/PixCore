@@ -78,16 +78,23 @@ public class RespawnManager {
                 online.showPlayer(player);
             }
 
-            // Terapkan custom layout ganda (Double-apply) untuk benar-benar menimpa sistem default StrikePractice
+            Object fight = null;
+            try {
+                if (plugin.isHooked() && plugin.getMGetFight() != null && plugin.getStrikePracticeAPI() != null) {
+                    fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player);
+                }
+            } catch (Exception ignored) {}
+            final Object finalFight = fight;
+
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (player.isOnline()) {
-                    plugin.applyStartKit(player);
+                    plugin.applyStartKit(player, finalFight);
                 }
             }, 5L);
 
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (player.isOnline()) {
-                    plugin.applyStartKit(player);
+                    plugin.applyStartKit(player, finalFight);
                 }
             }, 15L);
 

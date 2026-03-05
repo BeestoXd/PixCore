@@ -212,4 +212,6 @@ public class StrikePracticeHook {
 
     public Field getFBed1Broken()          { return fBed1Broken; }
     public Field getFBed2Broken()          { return fBed2Broken; }
+
+    public Method getMGetLastSelectedEditedKit() { return mGetLastSelectedEditedKit; }
 }

@@ -1,0 +1,128 @@
+# =================================================================
+#  BedFight Knockback  |  knockback/bedfight.yml
+# =================================================================
+
+enabled: true
+
+# Kit yang pakai KB ini (case-insensitive).
+# Kosongkan list → otomatis cocok semua kit yang mengandung "bed"
+kits:
+  - bedfight
+  - bedfightelo
+
+# -----------------------------------------------------------------
+#  BASE
+#  Impuls murni tanpa bonus apapun — ini yang dirasakan saat player
+#  berdiri diam dan dipukul tanpa sprint / W-tap / combo.
+#
+#  horizontal     : seberapa jauh terdorong ke depan
+#  vertical       : seberapa tinggi terangkat
+#  vertical-cap   : batas atas Y (jangan terlalu tinggi, ganggu combo)
+#  horizontal-cap : batas resultante X/Z (hindari sliding terlalu jauh)
+# -----------------------------------------------------------------
+base:
+  horizontal:     0.38
+  vertical:       0.30
+  vertical-cap:   0.42
+  horizontal-cap: 0.65
+
+# -----------------------------------------------------------------
+#  SPRINT
+#  bonus   : nilai tambah horizontal saat attacker sedang sprint
+#            (additive, bukan multiplier — lebih mudah diprediksi)
+#  cancel  : paksa setSprinting(false) agar vanilla sprint-KB tidak
+#            menimpa sistem ini
+# -----------------------------------------------------------------
+sprint:
+  bonus:  0.07
+  cancel: true
+
+# -----------------------------------------------------------------
+#  W-TAP
+#  Deteksi via kecepatan horizontal attacker saat memukul.
+#  Bukkit tidak bisa baca keyboard langsung, tapi kecepatan forward
+#  cukup akurat untuk gameplay normal.
+#
+#  enabled   : aktifkan/matikan fitur ini
+#  min-speed : kecepatan minimum (blok/tick) untuk dianggap W-tap
+#              Terlalu rendah → trigger terus. Terlalu tinggi → susah
+#              Rekomendasi: 0.13 – 0.20
+#  bonus     : tambahan horizontal saat W-tap terdeteksi
+# -----------------------------------------------------------------
+wtap:
+  enabled:   true
+  min-speed: 0.15
+  bonus:     0.09
+
+# -----------------------------------------------------------------
+#  COMBO STREAK
+#  Setiap hit beruntun dalam window-ms menambah 1 stack.
+#  Bonus horizontal bertambah per stack. Stack direset jika jeda
+#  antar hit melebihi window-ms.
+#
+#  Contoh (default):
+#    Hit ke-1  (stack 0) → h = 0.38
+#    Hit ke-2  (stack 1) → h = 0.38 + 0.035 = 0.415
+#    Hit ke-3  (stack 2) → h = 0.38 + 0.070 = 0.450
+#    Hit ke-6  (stack 5) → h = 0.38 + 0.175 = 0.555  ← max stack
+# -----------------------------------------------------------------
+combo:
+  enabled:       true
+  window-ms:     680
+  per-hit-bonus: 0.035
+  max-stack:     5
+
+# -----------------------------------------------------------------
+#  AIR MODIFIER
+#  Koreksi saat victim sedang di udara ketika dipukul.
+#  Nilai negatif = kurangi. Nilai positif = tambah.
+#
+#  h-delta : delta horizontal (saat di udara sedikit lebih jauh)
+#  v-delta : delta vertical (negatif agar tidak terlalu tinggi,
+#            sehingga victim cepat turun dan combo bisa dilanjut)
+# -----------------------------------------------------------------
+air:
+  h-delta:  0.04
+  v-delta: -0.05
+
+# -----------------------------------------------------------------
+#  ENCHANTMENT KB
+#  Tambahan per level enchant Knockback pada pedang attacker.
+# -----------------------------------------------------------------
+enchant:
+  h-per-level: 0.38
+  v-per-level: 0.03
+
+# -----------------------------------------------------------------
+#  MINIMUM GUARANTEE
+#  Batas bawah horizontal — apapun kondisinya (diam, jongkok, dsb.)
+#  Nilai ini mencegah bug "hampir tidak ada knockback saat diam".
+#  Jangan set lebih rendah dari 0.25.
+# -----------------------------------------------------------------
+min-horizontal: 0.30
+
+# =================================================================
+#  PANDUAN TUNING
+#
+#  Masalah                         Solusi
+#  ──────────────────────────────  ──────────────────────────────────
+#  KB terlalu kecil saat diam      Naikkan base.horizontal atau
+#                                  min-horizontal
+#
+#  KB terlalu jauh / slide panjang Turunkan base.horizontal-cap
+#                                  atau base.horizontal
+#
+#  Terlalu tinggi, susah combo     Turunkan base.vertical (0.26–0.28)
+#                                  atau base.vertical-cap (0.36–0.38)
+#
+#  W-tap tidak berasa              Naikkan wtap.bonus (0.11–0.14)
+#                                  Turunkan wtap.min-speed (0.12)
+#
+#  Combo tidak nambah power        Naikkan combo.per-hit-bonus (0.05)
+#                                  Naikkan combo.max-stack (6–7)
+#
+#  Combo terlalu kuat / abuse      Turunkan combo.max-stack (3–4)
+#                                  Kecilkan combo.per-hit-bonus
+#
+#  Sprint hit tidak berasa         Naikkan sprint.bonus (0.09–0.12)
+# =================================================================

@@ -69,27 +69,35 @@ public class BedListener implements Listener {
                     Object fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player);
                     if (fight != null) {
 
-                        Player p1 = null;
-                        if (plugin.getMGetFirstPlayer() != null) {
-                            try { p1 = (Player) plugin.getMGetFirstPlayer().invoke(fight); } catch (Exception ignored) {}
-                        }
-                        if (p1 == null && plugin.getMGetPlayersInFight() != null) {
-                            try {
-                                List<Player> fPlayers = (List<Player>) plugin.getMGetPlayersInFight().invoke(fight);
-                                if (fPlayers != null && !fPlayers.isEmpty()) p1 = fPlayers.get(0);
-                            } catch (Exception ignored) {}
-                        }
-
                         boolean isP1Team = false;
-                        if (p1 != null) {
-                            if (p1.getUniqueId().equals(player.getUniqueId())) isP1Team = true;
-                            else if (plugin.getMPlayersAreTeammates() != null) {
-                                try { isP1Team = (boolean) plugin.getMPlayersAreTeammates().invoke(fight, p1, player); } catch (Exception ignored) {}
-                            } else if (plugin.getMGetTeammates() != null) {
+
+                        if (plugin.partySplitManager != null && plugin.partySplitManager.isPartySplit(fight)) {
+                            isP1Team = plugin.partySplitManager.isInTeam1(player, fight);
+
+                        } else if (plugin.partyVsPartyManager != null && plugin.partyVsPartyManager.isPartyVsParty(fight)) {
+                            isP1Team = plugin.partyVsPartyManager.isInParty1(player, fight);
+
+                        } else {
+                            Player p1 = null;
+                            if (plugin.getMGetFirstPlayer() != null) {
+                                try { p1 = (Player) plugin.getMGetFirstPlayer().invoke(fight); } catch (Exception ignored) {}
+                            }
+                            if (p1 == null && plugin.getMGetPlayersInFight() != null) {
                                 try {
-                                    List<String> tms = (List<String>) plugin.getMGetTeammates().invoke(fight, p1);
-                                    if (tms != null && tms.contains(player.getName())) isP1Team = true;
+                                    List<Player> fPlayers = (List<Player>) plugin.getMGetPlayersInFight().invoke(fight);
+                                    if (fPlayers != null && !fPlayers.isEmpty()) p1 = fPlayers.get(0);
                                 } catch (Exception ignored) {}
+                            }
+                            if (p1 != null) {
+                                if (p1.getUniqueId().equals(player.getUniqueId())) isP1Team = true;
+                                else if (plugin.getMPlayersAreTeammates() != null) {
+                                    try { isP1Team = (boolean) plugin.getMPlayersAreTeammates().invoke(fight, p1, player); } catch (Exception ignored) {}
+                                } else if (plugin.getMGetTeammates() != null) {
+                                    try {
+                                        List<String> tms = (List<String>) plugin.getMGetTeammates().invoke(fight, p1);
+                                        if (tms != null && tms.contains(player.getName())) isP1Team = true;
+                                    } catch (Exception ignored) {}
+                                }
                             }
                         }
 
@@ -137,7 +145,7 @@ public class BedListener implements Listener {
                         String kitName = plugin.getKitName(player);
                         boolean isMlgRush = kitName != null && (kitName.equalsIgnoreCase("mlgrush") || kitName.equalsIgnoreCase("mlgrushelo"));
 
-                        if (isMlgRush && plugin.bestOfReflectionLoaded && plugin.getClsBestOfFight() != null && plugin.getClsBestOfFight().isInstance(fight)) {
+                        if (isMlgRush && plugin.getClsBestOfFight() != null && plugin.getClsBestOfFight().isInstance(fight)) {
                             event.setCancelled(true);
 
                             if (mlgRushCooldown.containsKey(player.getUniqueId()) && System.currentTimeMillis() - mlgRushCooldown.get(player.getUniqueId()) < 2000) {
@@ -241,9 +249,16 @@ public class BedListener implements Listener {
                             for (Player p : fightPlayers) {
                                 p.sendMessage(msg);
                                 boolean pIsP1Team = false;
-                                if (p1 != null) {
-                                    if (p1.getUniqueId().equals(p.getUniqueId())) pIsP1Team = true;
-                                    else if (plugin.getMPlayersAreTeammates() != null) { try { pIsP1Team = (boolean) plugin.getMPlayersAreTeammates().invoke(fight, p1, p); } catch (Exception ignored) {} }
+                                if (plugin.partySplitManager != null && plugin.partySplitManager.isPartySplit(fight)) {
+                                    pIsP1Team = plugin.partySplitManager.isInTeam1(p, fight);
+                                } else if (plugin.partyVsPartyManager != null && plugin.partyVsPartyManager.isPartyVsParty(fight)) {
+                                    pIsP1Team = plugin.partyVsPartyManager.isInParty1(p, fight);
+                                } else {
+                                    if (plugin.getMPlayersAreTeammates() != null) {
+                                        try { pIsP1Team = (boolean) plugin.getMPlayersAreTeammates().invoke(fight, player, p)
+                                                ? isP1Team : !isP1Team; } catch (Exception ignored) {}
+                                    }
+                                    if (!pIsP1Team && p.getUniqueId().equals(player.getUniqueId())) pIsP1Team = isP1Team;
                                 }
                                 boolean isVictim = (isP1Team && !pIsP1Team) || (!isP1Team && pIsP1Team);
                                 if (isVictim && plugin.getBedDestroyTitleManager() != null) plugin.getBedDestroyTitleManager().sendBedDestroyTitle(p);
@@ -262,10 +277,19 @@ public class BedListener implements Listener {
                 Location loc1 = (Location) arena.getClass().getMethod("getLoc1").invoke(arena);
                 Location loc2 = (Location) arena.getClass().getMethod("getLoc2").invoke(arena);
                 if (loc1 != null && loc2 != null) {
-                    double dist1 = bedBlock.getLocation().distanceSquared(loc1);
-                    double dist2 = bedBlock.getLocation().distanceSquared(loc2);
-                    boolean bedIsP1 = dist1 < dist2;
-                    return (isP1Team && bedIsP1) || (!isP1Team && !bedIsP1);
+                    double bedDist1 = bedBlock.getLocation().distanceSquared(loc1);
+                    double bedDist2 = bedBlock.getLocation().distanceSquared(loc2);
+                    boolean bedNearSpawn1 = bedDist1 < bedDist2;
+
+                    Location playerSpawn = plugin.arenaSpawnLocations.get(player.getUniqueId());
+                    if (playerSpawn != null) {
+                        double spDist1 = playerSpawn.distanceSquared(loc1);
+                        double spDist2 = playerSpawn.distanceSquared(loc2);
+                        boolean playerNearSpawn1 = spDist1 < spDist2;
+                        return bedNearSpawn1 == playerNearSpawn1;
+                    }
+
+                    return (isP1Team && bedNearSpawn1) || (!isP1Team && !bedNearSpawn1);
                 }
             }
         } catch (Exception ignored) {}

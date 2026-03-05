@@ -367,6 +367,10 @@ public class CombatListener implements Listener {
             return plugin.partySplitManager.isBedBroken(player, fight);
         }
 
+        if (plugin.partyVsPartyManager != null && plugin.partyVsPartyManager.isPartyVsParty(fight)) {
+            return plugin.partyVsPartyManager.isBedBroken(player, fight);
+        }
+
         try {
             if (plugin.getMGetFirstPlayer() != null) {
                 Player p1 = (Player) plugin.getMGetFirstPlayer().invoke(fight);

@@ -22,6 +22,82 @@ public class TeamColorUtil {
     public String getTeamColorCode(Player p, Object fight) {
         if (fight != null) {
             try {
+                java.lang.reflect.Method gt1 = fight.getClass().getMethod("getTeam1");
+                java.lang.reflect.Method gt2 = fight.getClass().getMethod("getTeam2");
+                java.util.HashSet<String> team1 = (java.util.HashSet<String>) gt1.invoke(fight);
+                java.util.HashSet<String> team2 = (java.util.HashSet<String>) gt2.invoke(fight);
+                if (team1 != null && team1.contains(p.getName())) return "§9";
+                if (team2 != null && team2.contains(p.getName())) return "§c";
+            } catch (Exception ignored) {}
+
+            try {
+                java.lang.reflect.Method gp1m = fight.getClass().getMethod("getParty1");
+                java.lang.reflect.Method gp2m = fight.getClass().getMethod("getParty2");
+                Object party1 = gp1m.invoke(fight);
+                Object party2 = gp2m.invoke(fight);
+                if (party1 != null && party2 != null) {
+                    try {
+                        java.lang.reflect.Method gpl = party1.getClass().getMethod("getPlayers");
+                        Object pl1 = gpl.invoke(party1);
+                        if (pl1 instanceof Iterable) {
+                            for (Object m : (Iterable<?>) pl1) {
+                                if (m instanceof Player && ((Player) m).getUniqueId().equals(p.getUniqueId())) return "§9";
+                            }
+                        }
+                        Object pl2 = gpl.invoke(party2);
+                        if (pl2 instanceof Iterable) {
+                            for (Object m : (Iterable<?>) pl2) {
+                                if (m instanceof Player && ((Player) m).getUniqueId().equals(p.getUniqueId())) return "§c";
+                            }
+                        }
+                        if ((pl1 instanceof java.util.List && !((java.util.List<?>) pl1).isEmpty())
+                                || (pl2 instanceof java.util.List && !((java.util.List<?>) pl2).isEmpty())) {
+                        }
+                    } catch (Exception ignored) {}
+                    try {
+                        java.lang.reflect.Method gmn = party1.getClass().getMethod("getMembersNames");
+                        Object mn1 = gmn.invoke(party1);
+                        if (mn1 instanceof Iterable) {
+                            for (Object m : (Iterable<?>) mn1) {
+                                if (p.getName().equals(m)) return "§9";
+                            }
+                        }
+                        Object mn2 = gmn.invoke(party2);
+                        if (mn2 instanceof Iterable) {
+                            for (Object m : (Iterable<?>) mn2) {
+                                if (p.getName().equals(m)) return "§c";
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                    try {
+                        java.lang.reflect.Method gm = party1.getClass().getMethod("getMembers");
+                        Object mb1 = gm.invoke(party1);
+                        if (mb1 instanceof Iterable) {
+                            for (Object m : (Iterable<?>) mb1) {
+                                if (m instanceof Player && ((Player) m).getUniqueId().equals(p.getUniqueId())) return "§9";
+                                if (m instanceof String && p.getName().equals(m)) return "§9";
+                            }
+                        }
+                        Object mb2 = gm.invoke(party2);
+                        if (mb2 instanceof Iterable) {
+                            for (Object m : (Iterable<?>) mb2) {
+                                if (m instanceof Player && ((Player) m).getUniqueId().equals(p.getUniqueId())) return "§c";
+                                if (m instanceof String && p.getName().equals(m)) return "§c";
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                    try {
+                        java.lang.reflect.Method gpa1 = fight.getClass().getMethod("getPartyAlive1");
+                        java.lang.reflect.Method gpa2 = fight.getClass().getMethod("getPartyAlive2");
+                        java.util.HashSet<String> alive1 = (java.util.HashSet<String>) gpa1.invoke(fight);
+                        java.util.HashSet<String> alive2 = (java.util.HashSet<String>) gpa2.invoke(fight);
+                        if (alive1 != null && alive1.contains(p.getName())) return "§9";
+                        if (alive2 != null && alive2.contains(p.getName())) return "§c";
+                    } catch (Exception ignored) {}
+                }
+            } catch (Exception ignored) {}
+
+            try {
                 Player rep = null;
                 if (hook.getMGetFirstPlayer() != null) {
                     try { rep = (Player) hook.getMGetFirstPlayer().invoke(fight); }
@@ -45,6 +121,17 @@ public class TeamColorUtil {
             } catch (Exception ignored) {}
         }
         return getArmorColorCode(p);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Color getTeamColor(Player p, Object fight) {
+        if (fight == null) return getTeamColor(p);
+        String code = getTeamColorCode(p, fight);
+        if (code.contains("§c") || code.contains("§d")) return Color.RED;
+        if (code.contains("§9") || code.contains("§b")) return Color.BLUE;
+        if (code.contains("§a"))                         return Color.LIME;
+        if (code.contains("§e"))                         return Color.YELLOW;
+        return Color.BLUE;
     }
 
     @SuppressWarnings("unchecked")

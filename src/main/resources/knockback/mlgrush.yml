@@ -1,21 +1,61 @@
+# ============================================================
+#  MLGRush Knockback — knockback/mlgrush.yml
+#  Sistem knockback custom bergaya mineman.club
+# ============================================================
+
 enabled: true
 
-# Pengaturan dasar knockback MLGRush (Feel MMC)
-horizontal: 0.38
-vertical: 0.36
-vertical-limit: 0.42
+# Kit yang menggunakan knockback ini (case-insensitive)
+# Kosongkan list untuk default: mlgrush & mlgrushelo
+kits:
+  - mlgrush
+  - mlgrushelo
 
-# Multiplier ketika pemukul (attacker) sedang berlari (W-Tap / Sprint)
-sprint-multiplier: 1.15
+# ---- Dasar ------------------------------------------------
+# horizontal   : dorongan ke depan per hit (sumbu X/Z)
+# vertical     : dorongan ke atas per hit (sumbu Y)
+# vertical-limit: batas maksimum Y velocity setelah hit
+# horizontal-cap: batas resultante kecepatan X/Z setelah blend
+# friction     : pembagi velocity LAMA sebelum impuls baru ditambahkan
+#                Lebih tinggi = velocity lama cepat hilang = terasa lebih "snappy"
+#                Nilai khas mineman.club: ~2.0 – 2.4
+horizontal:        0.36
+vertical:          0.33
+vertical-limit:    0.40
+horizontal-cap:    0.55
+friction:          2.2
 
-# [PENTING] Mekanik Udara / Combo
-# Ini adalah rahasia dari combo MMC. Ketika pemain sudah tidak menyentuh tanah,
-# dorongan mereka akan dikurangi agar tetap bisa di-combo dengan mulus.
-air-horizontal-multiplier: 0.65
-air-vertical-multiplier: 0.90
+# ---- Sprint -----------------------------------------------
+sprint-multiplier: 1.18   # horizontal dikali nilai ini saat attacker sprint
+reset-sprint:      true   # paksa setSprinting(false) pada attacker saat hit
+# (meniru perilaku vanilla yang beri animasi jeda sprint)
 
-# [BARU] Mekanik Enchantment (Khusus Stick / Senjata ber-enchant Knockback)
-# Ini yang membuat hit ke pemain diam menggunakan Stick terasa sangat kuat.
+# ---- Air modifiers ----------------------------------------
+# Saat victim berada di udara, impuls dikurangi agar tidak
+# terlalu jauh terlempar dan combo tetap bisa dilanjutkan.
+air:
+  horizontal-multiplier: 0.60
+  vertical-multiplier:   0.75
+
+# ---- Combo window -----------------------------------------
+# Jika hit berikutnya terjadi dalam window-ms dari hit sebelumnya,
+# horizontal mendapat bonus kecil → terasa "combo" lebih mudah.
+combo:
+  enabled:           true
+  window-ms:         650      # jendela waktu dalam milidetik
+  horizontal-bonus:  0.06     # tambahan horizontal saat dalam window
+
+# ---- KB Enchantment ---------------------------------------
 enchantment:
-  kb-horizontal-per-level: 0.45
-  kb-vertical-per-level: 0.05
+  kb-horizontal-per-level: 0.42
+  kb-vertical-per-level:   0.04
+
+# ============================================================
+#  Panduan tuning cepat:
+#
+#  Terasa terlalu "slide" jauh  → turunkan horizontal-cap atau horizontal
+#  Terasa terlalu tinggi         → turunkan vertical atau vertical-limit
+#  Combo susah dilanjutkan       → naikkan combo.horizontal-bonus atau combo.window-ms
+#  Hit W-tap tidak konsisten     → pastikan reset-sprint: true
+#  Terasa "lempar" terlalu jauh  → naikkan friction (2.0 – 2.8)
+# ============================================================

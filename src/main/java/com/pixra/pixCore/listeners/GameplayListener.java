@@ -207,7 +207,7 @@ public class GameplayListener implements Listener {
             return;
         }
 
-        if (plugin.checkArenaBorders && plugin.arenaReflectionLoaded && plugin.arenaBoundaryManager != null) {
+        if (plugin.checkArenaBorders && plugin.arenaBoundaryManager != null) {
             if (plugin.arenaBoundaryManager.checkArenaBorder(player, event.getBlock())) {
                 event.setCancelled(true);
                 plugin.sendCooldownMessage(player, "build-outside-arena");
