@@ -63,13 +63,12 @@ public class PixCommand implements CommandExecutor {
 
                 Player player = (Player) sender;
 
-                // FIX: Menghindari error "Cannot resolve symbol 'BED'" pada versi API baru
-                Material bedMaterial = Material.getMaterial("RED_BED"); // Untuk 1.13+
+                Material bedMaterial = Material.getMaterial("RED_BED");
                 if (bedMaterial == null) {
-                    bedMaterial = Material.getMaterial("BED"); // Untuk 1.8 - 1.12
+                    bedMaterial = Material.getMaterial("BED");
                 }
                 if (bedMaterial == null) {
-                    bedMaterial = Material.STONE; // Fallback darurat agar tidak crash
+                    bedMaterial = Material.STONE;
                 }
 
                 ItemStack item = new ItemStack(bedMaterial);
@@ -94,25 +93,19 @@ public class PixCommand implements CommandExecutor {
                         sender.sendMessage(ChatColor.RED + "You do not have permission.");
                         return true;
                     }
-                    if (!(sender instanceof Player)) {
-                        sender.sendMessage(ChatColor.RED + "Only players can use this command.");
-                        return true;
-                    }
-
-                    if (args.length >= 4) {
+                    if (args.length >= 3) {
                         String kitName = args[2];
-                        int pos;
-                        try {
-                            pos = Integer.parseInt(args[3]);
-                        } catch (NumberFormatException e) {
-                            sender.sendMessage(ChatColor.RED + "Position must be a number!");
-                            return true;
+                        if (plugin.hologramManager != null) {
+                            if (sender instanceof Player) {
+                                plugin.hologramManager.registerKit((Player) sender, kitName);
+                            } else {
+                                plugin.hologramManager.registerKitConsole(kitName);
+                                sender.sendMessage(ChatColor.GREEN + "[PixCore] Kit " + kitName.toUpperCase() + " registered for leaderboard holograms.");
+                            }
                         }
-
-                        plugin.hologramManager.createStaticHologram((Player) sender, kitName, pos);
                         return true;
                     }
-                    sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard add <kit> <pos>");
+                    sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard add <kit>");
                     return true;
                 }
 
@@ -121,22 +114,77 @@ public class PixCommand implements CommandExecutor {
                         sender.sendMessage(ChatColor.RED + "You do not have permission.");
                         return true;
                     }
-
-                    if (args.length >= 4) {
+                    if (args.length >= 3) {
                         String kitName = args[2];
-                        int pos;
-                        try {
-                            pos = Integer.parseInt(args[3]);
-                        } catch (NumberFormatException e) {
-                            sender.sendMessage(ChatColor.RED + "Position must be a number!");
-                            return true;
+                        if (plugin.hologramManager != null) {
+                            if (sender instanceof Player) {
+                                plugin.hologramManager.unregisterKit((Player) sender, kitName);
+                            } else {
+                                plugin.hologramManager.unregisterKitConsole(kitName);
+                                sender.sendMessage(ChatColor.GREEN + "[PixCore] Kit " + kitName.toUpperCase() + " unregistered.");
+                            }
                         }
-
-                        plugin.hologramManager.removeStaticHologram(kitName, pos);
-                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Hologram " + kitName + " (Pos " + pos + ") removed.");
                         return true;
                     }
-                    sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard remove <kit> <pos>");
+                    sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard remove <kit>");
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("set")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+                    if (!(sender instanceof Player)) {
+                        sender.sendMessage(ChatColor.RED + "Only players can place holograms.");
+                        return true;
+                    }
+                    if (args.length >= 4) {
+                        String category = args[2];
+                        String period   = args[3];
+                        if (plugin.hologramManager != null)
+                            plugin.hologramManager.placeStandingHologram((Player) sender, category, period);
+                    } else {
+                        sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard set <ws|wins|kills> <daily|weekly|monthly|lifetime>");
+                        sender.sendMessage(ChatColor.GRAY + "Note: ws only supports 'daily'.");
+                    }
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("setremove")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+                    if (!(sender instanceof Player)) {
+                        sender.sendMessage(ChatColor.RED + "Only players can use this.");
+                        return true;
+                    }
+                    if (args.length >= 3) {
+                        try {
+                            int id = Integer.parseInt(args[2]);
+                            if (plugin.hologramManager != null)
+                                plugin.hologramManager.removeStandingHologram((Player) sender, id);
+                        } catch (NumberFormatException e) {
+                            sender.sendMessage(ChatColor.RED + "ID must be a number.");
+                        }
+                    } else {
+                        sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard setremove <id>");
+                    }
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("setlist")) {
+                    if (!sender.hasPermission("pixcore.admin")) {
+                        sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                        return true;
+                    }
+                    if (!(sender instanceof Player)) {
+                        sender.sendMessage(ChatColor.RED + "Only players can use this.");
+                        return true;
+                    }
+                    if (plugin.hologramManager != null)
+                        plugin.hologramManager.listStandingHolograms((Player) sender);
                     return true;
                 }
 
@@ -284,7 +332,7 @@ public class PixCommand implements CommandExecutor {
                     }
 
                     if (args.length >= 4) {
-                        String category = args[2].toLowerCase(); // ws, wins, kills
+                        String category = args[2].toLowerCase();
                         String kitName = args[3];
 
                         if (!category.equals("ws") && !category.equals("winstreak") && !category.equals("wins") && !category.equals("kills")) {
@@ -307,8 +355,11 @@ public class PixCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "=== PixCore Commands ===");
         sender.sendMessage(ChatColor.YELLOW + "/pix reload" + ChatColor.GRAY + " - Reload configurations");
         sender.sendMessage(ChatColor.YELLOW + "/pix bed" + ChatColor.GRAY + " - Get the custom Arena Bed Fixer");
-        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard add <kit> <pos>" + ChatColor.GRAY + " - Place Hologram (e.g. 1)");
-        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard remove <kit> <pos>" + ChatColor.GRAY + " - Remove Hologram");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard add <kit>" + ChatColor.GRAY + " - Register kit for countdown holograms");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard remove <kit>" + ChatColor.GRAY + " - Unregister kit countdown hologram");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard set <ws|wins|kills> <period>" + ChatColor.GRAY + " - Place standing hologram at your position");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard setremove <id>" + ChatColor.GRAY + " - Remove standing hologram by ID");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard setlist" + ChatColor.GRAY + " - List all standing holograms");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard enable [kit]" + ChatColor.GRAY + " - Enable leaderboard");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard disable [kit]" + ChatColor.GRAY + " - Disable leaderboard");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard gui set <kit> <slot>" + ChatColor.GRAY + " - Set GUI item (hold item)");

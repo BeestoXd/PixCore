@@ -258,7 +258,7 @@ public class BedListener implements Listener {
                                         try { pIsP1Team = (boolean) plugin.getMPlayersAreTeammates().invoke(fight, player, p)
                                                 ? isP1Team : !isP1Team; } catch (Exception ignored) {}
                                     }
-                                    if (!pIsP1Team && p.getUniqueId().equals(player.getUniqueId())) pIsP1Team = isP1Team;
+                                    if (p.getUniqueId().equals(player.getUniqueId())) pIsP1Team = isP1Team;
                                 }
                                 boolean isVictim = (isP1Team && !pIsP1Team) || (!isP1Team && pIsP1Team);
                                 if (isVictim && plugin.getBedDestroyTitleManager() != null) plugin.getBedDestroyTitleManager().sendBedDestroyTitle(p);

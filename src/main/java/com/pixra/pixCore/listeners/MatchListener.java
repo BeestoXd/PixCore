@@ -50,6 +50,7 @@ public class MatchListener implements Listener {
 
     private final Set<Object> startedFights = new HashSet<>();
     private final Map<Object, Long> fightCountdownCooldown = new HashMap<>();
+    private final Set<Object> partyCountdownFights = new HashSet<>();
 
     public MatchListener(PixCore plugin) {
         this.plugin = plugin;
@@ -137,9 +138,67 @@ public class MatchListener implements Listener {
 
             Class<? extends Event> roundEndClass = (Class<? extends Event>) Class.forName("ga.strikepractice.events.RoundEndEvent");
             Bukkit.getPluginManager().registerEvent(roundEndClass, this, EventPriority.MONITOR, (listener, event) -> handleRoundEnd(event), plugin);
+
+            try {
+                Class<? extends Event> kitSelectClass = (Class<? extends Event>) Class.forName("ga.strikepractice.events.KitSelectEvent");
+                Bukkit.getPluginManager().registerEvent(kitSelectClass, this, EventPriority.MONITOR,
+                        (listener, event) -> handlePartyKitSelect(event), plugin);
+            } catch (Exception ignored) {
+                plugin.getLogger().warning("[MatchListener] Could not register KitSelectEvent — party countdown may not work.");
+            }
+
         } catch (Exception e) {
             plugin.getLogger().warning("Could not register StrikePractice custom events.");
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void handlePartyKitSelect(Event event) {
+        if (!plugin.startCountdownEnabled) return;
+        try {
+            Player player = (Player) event.getClass().getMethod("getPlayer").invoke(event);
+            if (player == null || !player.isOnline()) return;
+            if (!plugin.isHooked() || !plugin.isInFight(player)) return;
+
+            Object fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player);
+            if (fight == null) return;
+
+            boolean isParty = (plugin.partySplitManager   != null && plugin.partySplitManager.isPartySplit(fight))
+                    || (plugin.partyVsPartyManager  != null && plugin.partyVsPartyManager.isPartyVsParty(fight));
+            if (!isParty) return;
+
+            if (partyCountdownFights.contains(fight)) return;
+            partyCountdownFights.add(fight);
+            fightCountdownCooldown.put(fight, System.currentTimeMillis());
+
+            if (!startedFights.contains(fight)) {
+                startedFights.add(fight);
+                for (Player pp : resolveAllFightPlayers(fight, new ArrayList<>())) {
+                    if (pp != null) plugin.playerMatchKills.put(pp.getUniqueId(), 0);
+                }
+            }
+
+            final Object finalFight = fight;
+            final List<Player> allPlayers = resolveAllFightPlayers(fight, new ArrayList<>());
+
+            // Resolve kit for hologram display
+            String partyKit = null;
+            if (!allPlayers.isEmpty() && allPlayers.get(0) != null) {
+                partyKit = plugin.getKitName(allPlayers.get(0));
+                if (partyKit == null) {
+                    try {
+                        Object k = fight.getClass().getMethod("getKit").invoke(fight);
+                        if (k != null) partyKit = (String) k.getClass().getMethod("getName").invoke(k);
+                    } catch (Exception ignored) {}
+                }
+            }
+            startMatchCountdown(allPlayers, finalFight, true, partyKit);
+
+            new BukkitRunnable() {
+                @Override public void run() { partyCountdownFights.remove(finalFight); }
+            }.runTaskLater(plugin, 20L * 60 * 10);
+
+        } catch (Exception ignored) {}
     }
 
     private byte getBlockDataSafe(Block block) {
@@ -217,6 +276,43 @@ public class MatchListener implements Listener {
     }
 
     @SuppressWarnings("unchecked")
+    private String getPartyLeaderName(Object fight, Player referencePlayer) {
+        if (referencePlayer == null) return null;
+        try {
+            if (plugin.partyVsPartyManager != null && plugin.partyVsPartyManager.isPartyVsParty(fight)) {
+                boolean inParty1 = plugin.partyVsPartyManager.isInParty1(referencePlayer, fight);
+                Method getPartyMethod = fight.getClass().getMethod(inParty1 ? "getParty1" : "getParty2");
+                Object party = getPartyMethod.invoke(fight);
+                if (party != null) {
+                    for (String m : new String[]{"getLeader", "getLeaderName", "getLeaderUUID"}) {
+                        try {
+                            Object leader = party.getClass().getMethod(m).invoke(party);
+                            if (leader instanceof Player)  return ((Player) leader).getName();
+                            if (leader instanceof String)  return (String) leader;
+                            if (leader instanceof java.util.UUID) {
+                                Player lp = Bukkit.getPlayer((java.util.UUID) leader);
+                                if (lp != null) return lp.getName();
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    List<Player> members = plugin.partyVsPartyManager.getParty1Players(fight);
+                    if (!inParty1) members = plugin.partyVsPartyManager.getParty2Players(fight);
+                    if (!members.isEmpty()) return members.get(0).getName();
+                }
+            }
+
+            if (plugin.partySplitManager != null && plugin.partySplitManager.isPartySplit(fight)) {
+                boolean inTeam1 = plugin.partySplitManager.isInTeam1(referencePlayer, fight);
+                List<Player> team = inTeam1
+                        ? plugin.partySplitManager.getTeam1Players(fight)
+                        : plugin.partySplitManager.getTeam2Players(fight);
+                if (!team.isEmpty()) return team.get(0).getName();
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
     public void handleDuelStart(Event event) {
         try {
             Object fight = event.getClass().getMethod("getFight").invoke(event);
@@ -282,13 +378,34 @@ public class MatchListener implements Listener {
                         (plugin.partySplitManager   != null && plugin.partySplitManager.isPartySplit(fight))
                                 || (plugin.partyVsPartyManager != null && plugin.partyVsPartyManager.isPartyVsParty(fight));
 
+                if (isPartyFight) {
+                    final Object fightRef = fight;
+                    final List<Player> seedPlayers = new ArrayList<>(players);
+                    Runnable storeSpawns = () -> {
+                        for (Player pp : resolveAllFightPlayers(fightRef, seedPlayers)) {
+                            if (pp != null && pp.isOnline()
+                                    && !plugin.arenaSpawnLocations.containsKey(pp.getUniqueId())) {
+                                plugin.arenaSpawnLocations.put(pp.getUniqueId(), pp.getLocation().clone());
+                            }
+                        }
+                    };
+                    storeSpawns.run();
+                    for (long d : new long[]{3L, 8L, 20L}) {
+                        new BukkitRunnable() {
+                            @Override public void run() { storeSpawns.run(); }
+                        }.runTaskLater(plugin, d);
+                    }
+                }
+
                 long now = System.currentTimeMillis();
                 long lastTime = fightCountdownCooldown.getOrDefault(fight, 0L);
 
                 if (now - lastTime > 4000L) {
                     if (isFirstRound || !isBridge) {
-                        fightCountdownCooldown.put(fight, now);
-                        startMatchCountdown(players, fight, isPartyFight);
+                        if (!isPartyFight) {
+                            fightCountdownCooldown.put(fight, now);
+                            startMatchCountdown(players, fight, false, kitName);
+                        }
                     }
                 }
 
@@ -462,44 +579,73 @@ public class MatchListener implements Listener {
         return new java.util.ArrayList<>();
     }
 
+    @SuppressWarnings("unchecked")
+    private List<Player> resolveAllFightPlayers(Object fight, List<Player> seed) {
+        List<Player> result = new ArrayList<>();
+
+        for (Player p : seed) {
+            if (p != null && p.isOnline() && !result.contains(p)) result.add(p);
+        }
+
+        for (Player p : getPartyAllPlayers(fight)) {
+            if (p != null && p.isOnline() && !result.contains(p)) result.add(p);
+        }
+
+        if (plugin.isHooked() && plugin.getMGetFight() != null && plugin.getStrikePracticeAPI() != null) {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (result.contains(p)) continue;
+                try {
+                    if (!plugin.isInFight(p)) continue;
+                    Object pFight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), p);
+                    if (fight.equals(pFight)) result.add(p);
+                } catch (Exception ignored) {}
+            }
+        }
+
+        return result;
+    }
+
     private void startMatchCountdown(List<Player> players, Object fight, boolean isPartyFight) {
+        startMatchCountdown(players, fight, isPartyFight, null);
+    }
+
+    private void startMatchCountdown(List<Player> players, Object fight, boolean isPartyFight, String kitName) {
         final Object finalFight    = fight;
         final boolean finalIsParty = isPartyFight;
+        final String finalKit      = kitName;
 
-        if (finalIsParty) {
-            List<Player> partyAll = getPartyAllPlayers(fight);
-            if (partyAll.isEmpty()) partyAll = players;
+        final List<Player> countdownPlayers = finalIsParty
+                ? resolveAllFightPlayers(fight, players)
+                : new ArrayList<>(players);
 
-            for (Player p : partyAll) {
-                if (p != null && p.isOnline()) plugin.frozenPlayers.add(p.getUniqueId());
+        for (Player p : countdownPlayers) {
+            if (p != null && p.isOnline()) {
+                plugin.frozenPlayers.add(p.getUniqueId());
+                if (plugin.hologramManager != null) plugin.hologramManager.showForPlayer(p, finalKit);
             }
+        }
 
-            for (long delay : new long[]{5L, 15L, 40L, 60L}) {
-                new BukkitRunnable() {
-                    @Override public void run() {
-                        List<Player> all = getPartyAllPlayers(finalFight);
-                        if (all.isEmpty()) all = players;
-                        for (Player fp : all) {
-                            if (fp != null && fp.isOnline()) {
-                                plugin.frozenPlayers.add(fp.getUniqueId());
-                                plugin.applyStartKit(fp, finalFight);
+        for (long delay : new long[]{3L, 8L, 20L, 40L}) {
+            new BukkitRunnable() {
+                @Override public void run() {
+                    if (finalIsParty) {
+                        for (Player lp : resolveAllFightPlayers(finalFight, countdownPlayers)) {
+                            if (lp != null && lp.isOnline() && !countdownPlayers.contains(lp)) {
+                                countdownPlayers.add(lp);
+                                plugin.frozenPlayers.add(lp.getUniqueId());
                             }
                         }
                     }
-                }.runTaskLater(plugin, delay);
-            }
-        } else {
-            for (Player p : players) {
-                if (p == null || !p.isOnline()) continue;
-                plugin.frozenPlayers.add(p.getUniqueId());
-                final Player fp = p;
-                new BukkitRunnable() {
-                    @Override public void run() { if (fp.isOnline()) plugin.applyStartKit(fp); }
-                }.runTaskLater(plugin, 5L);
-                new BukkitRunnable() {
-                    @Override public void run() { if (fp.isOnline()) plugin.applyStartKit(fp); }
-                }.runTaskLater(plugin, 15L);
-            }
+                    for (Player fp : new ArrayList<>(countdownPlayers)) {
+                        if (fp != null && fp.isOnline()) {
+                            plugin.frozenPlayers.add(fp.getUniqueId());
+                            if (plugin.hologramManager != null) plugin.hologramManager.showForPlayer(fp, finalKit);
+                            if (finalIsParty) plugin.applyStartKit(fp, finalFight);
+                            else plugin.applyStartKit(fp);
+                        }
+                    }
+                }
+            }.runTaskLater(plugin, delay);
         }
 
         int maxSeconds = plugin.startCountdownDuration;
@@ -507,25 +653,32 @@ public class MatchListener implements Listener {
             int current = maxSeconds;
             @Override
             public void run() {
+                if (finalIsParty) {
+                    for (Player lp : resolveAllFightPlayers(finalFight, countdownPlayers)) {
+                        if (lp != null && lp.isOnline() && !countdownPlayers.contains(lp)) {
+                            countdownPlayers.add(lp);
+                            plugin.frozenPlayers.add(lp.getUniqueId());
+                        }
+                    }
+                }
+
                 if (current <= 0) {
-                    List<Player> countdownTargets = finalIsParty ? getPartyAllPlayers(finalFight) : players;
-                    if (countdownTargets.isEmpty()) countdownTargets = players;
-
-                    for (Player p : countdownTargets) {
+                    for (Player p : new ArrayList<>(countdownPlayers)) {
                         if (p == null || !p.isOnline()) continue;
-
                         plugin.arenaSpawnLocations.put(p.getUniqueId(), p.getLocation().clone());
                         if (plugin.startMatchMessage != null && !plugin.startMatchMessage.isEmpty()) p.sendMessage(plugin.startMatchMessage);
                         if (plugin.startCountdownTitles != null && plugin.startCountdownTitles.containsKey(0)) plugin.sendTitle(p, plugin.startCountdownTitles.get(0), "", 0, 20, 10);
                         if (plugin.startCountdownSoundEnabled && plugin.startMatchSound != null) p.playSound(p.getLocation(), plugin.startMatchSound, plugin.startCountdownVolume, plugin.startCountdownPitch);
                         plugin.frozenPlayers.remove(p.getUniqueId());
-                        if(plugin.blockReplenishManager != null) plugin.blockReplenishManager.scanPlayerInventory(p);
+                        if (plugin.hologramManager != null) plugin.hologramManager.hideForPlayer(p);
+                        if (plugin.blockReplenishManager != null) plugin.blockReplenishManager.scanPlayerInventory(p);
                     }
                     cancel();
                     return;
                 }
+
                 if (plugin.startCountdownEnabled) {
-                    for (Player p : players) {
+                    for (Player p : new ArrayList<>(countdownPlayers)) {
                         if (p == null || !p.isOnline()) continue;
                         if (plugin.startCountdownMessages != null) p.sendMessage(plugin.startCountdownMessages.getOrDefault(current, ChatColor.RED + String.valueOf(current)));
                         if (plugin.startCountdownTitles != null && plugin.startCountdownTitles.containsKey(current)) plugin.sendTitle(p, plugin.startCountdownTitles.get(current), "", 0, 20, 0);
@@ -561,13 +714,26 @@ public class MatchListener implements Listener {
                     try { List<Player> temp = (List<Player>) plugin.getMGetPlayers().invoke(fight); if (temp != null) fightPlayers.addAll(temp); } catch (Exception ignored) {}
                 }
                 if (fightPlayers.isEmpty()) { if (winner != null) fightPlayers.add(winner); if (loser != null) fightPlayers.add(loser); }
+
+                boolean isPartyFight = (plugin.partySplitManager   != null && plugin.partySplitManager.isPartySplit(fight))
+                        || (plugin.partyVsPartyManager  != null && plugin.partyVsPartyManager.isPartyVsParty(fight));
+                if (isPartyFight) {
+                    for (Player pp : resolveAllFightPlayers(fight, fightPlayers)) {
+                        if (pp != null && !fightPlayers.contains(pp)) fightPlayers.add(pp);
+                    }
+                }
                 fightPlayers.removeIf(p -> p == null);
 
                 if (winner == null && fight != null && !fightPlayers.isEmpty()) {
-                    boolean isPartyFight = (plugin.partySplitManager   != null && plugin.partySplitManager.isPartySplit(fight))
+                    boolean isPartyFight2 = (plugin.partySplitManager   != null && plugin.partySplitManager.isPartySplit(fight))
                             || (plugin.partyVsPartyManager  != null && plugin.partyVsPartyManager.isPartyVsParty(fight));
-                    if (isPartyFight) {
-                        try {
+                    if (isPartyFight2) {
+                        if (winner == null && plugin.partySplitManager != null)
+                            winner = plugin.partySplitManager.getBridgeWinner(fight);
+                        if (winner == null && plugin.partyVsPartyManager != null)
+                            winner = plugin.partyVsPartyManager.getBridgeWinner(fight);
+
+                        if (winner == null) try {
                             Object winners = event.getClass().getMethod("getWinners").invoke(event);
                             if (winners instanceof Iterable) {
                                 for (Object obj : (Iterable<?>) winners) {
@@ -605,7 +771,35 @@ public class MatchListener implements Listener {
                                 }
                             } catch (Exception ignored) {}
                         }
+
+                        if (winner == null && plugin.partySplitManager != null
+                                && plugin.partySplitManager.isPartySplit(fight)) {
+                            try {
+                                java.util.HashSet<String> alive1 = (java.util.HashSet<String>) fight.getClass().getMethod("getAlive1").invoke(fight);
+                                java.util.HashSet<String> alive2 = (java.util.HashSet<String>) fight.getClass().getMethod("getAlive2").invoke(fight);
+                                if (alive1 != null && alive2 != null) {
+                                    if (!alive1.isEmpty() && alive2.isEmpty()) {
+                                        for (String name : alive1) {
+                                            Player cand = Bukkit.getPlayer(name);
+                                            if (cand != null && cand.isOnline()) { winner = cand; break; }
+                                        }
+                                    } else if (alive1.isEmpty() && !alive2.isEmpty()) {
+                                        for (String name : alive2) {
+                                            Player cand = Bukkit.getPlayer(name);
+                                            if (cand != null && cand.isOnline()) { winner = cand; break; }
+                                        }
+                                    }
+                                }
+                            } catch (Exception ignored) {}
+                        }
                     }
+                }
+
+                boolean isPartyEndFightForMark = (plugin.partySplitManager  != null && plugin.partySplitManager.isPartySplit(fight))
+                        || (plugin.partyVsPartyManager != null && plugin.partyVsPartyManager.isPartyVsParty(fight));
+                if (isPartyEndFightForMark) {
+                    for (Player pMark : fightPlayers)
+                        if (pMark != null) plugin.recentPartyEndedPlayers.add(pMark.getUniqueId());
                 }
 
                 for (Player p : fightPlayers) {
@@ -728,6 +922,9 @@ public class MatchListener implements Listener {
                 plugin.matchScores.remove(fight);
                 startedFights.remove(fight);
                 fightCountdownCooldown.remove(fight);
+                partyCountdownFights.remove(fight);
+                if (plugin.partySplitManager != null) plugin.partySplitManager.onFightEnd(fight);
+                if (plugin.partyVsPartyManager != null) plugin.partyVsPartyManager.onFightEnd(fight);
 
                 new BukkitRunnable() {
                     @Override
@@ -737,6 +934,7 @@ public class MatchListener implements Listener {
                             if (p != null) {
                                 plugin.playerMatchResults.remove(p.getUniqueId());
                                 plugin.playerMatchKills.remove(p.getUniqueId());
+                                plugin.recentPartyEndedPlayers.remove(p.getUniqueId());
                             }
                         }
                     }
@@ -769,8 +967,13 @@ public class MatchListener implements Listener {
                         isLoser = true;
                     }
 
-                    if (!isWinner && !isLoser) {
+                    boolean isPartyEndFight = (plugin.partySplitManager   != null && plugin.partySplitManager.isPartySplit(fight))
+                            || (plugin.partyVsPartyManager  != null && plugin.partyVsPartyManager.isPartyVsParty(fight));
+                    if (!isWinner && !isLoser && !isPartyEndFight) {
                         continue;
+                    }
+                    if (!isWinner && !isLoser && isPartyEndFight) {
+                        isLoser = true;
                     }
 
                     plugin.cleanupPlayer(p.getUniqueId(), false);
@@ -779,26 +982,50 @@ public class MatchListener implements Listener {
                     final Player finalWinner = winner;
                     final Player finalLoser = loser;
                     final boolean finalIsDuelReq = isDuelReq;
+                    final boolean finalIsPartyFight = isPartyEndFight;
+
+                    final String finalWinnerLeader;
+                    final String finalLoserLeader;
+                    if (isPartyEndFight && winner != null) {
+                        finalWinnerLeader = getPartyLeaderName(fight, winner);
+                        finalLoserLeader  = isLoser ? getPartyLeaderName(fight, p) : null;
+                    } else {
+                        finalWinnerLeader = null;
+                        finalLoserLeader  = null;
+                    }
 
                     new BukkitRunnable() {
                         @Override
                         public void run() {
                             if (p.isOnline()) {
+                                if ((plugin.partySplitManager != null
+                                        && plugin.partySplitManager.isBridgeEndHandled(fight))
+                                        || (plugin.partyVsPartyManager != null
+                                        && plugin.partyVsPartyManager.isBridgeEndHandled(fight))) {
+                                    plugin.frozenPlayers.remove(p.getUniqueId());
+                                    return;
+                                }
                                 if (finalIsWinnerForSound) {
                                     if (finalIsBestOf) {
                                         String t = finalIsBlueWinner ? plugin.getMsg("bestof.blue-wins.title") : plugin.getMsg("bestof.red-wins.title");
                                         String s = finalIsBlueWinner ? plugin.getMsg("bestof.blue-wins.subtitle") : plugin.getMsg("bestof.red-wins.subtitle");
                                         if(t == null || t.isEmpty()) t = finalIsBlueWinner ? "&9&lBLUE WINS!" : "&c&lRED WINS!";
                                         if(s == null || s.isEmpty()) s = finalIsBlueWinner ? "&9<blue_score> &8- &c<red_score>" : "&c<red_score> &8- &9<blue_score>";
-
                                         s = s.replace("<blue_score>", String.valueOf(finalBlueScore)).replace("<red_score>", String.valueOf(finalRedScore));
+                                        plugin.sendTitle(p, ChatColor.translateAlternateColorCodes('&', t), ChatColor.translateAlternateColorCodes('&', s), 10, 70, 20);
+                                    } else if (finalIsPartyFight) {
+                                        String t = plugin.getMsg("party.victory.title");
+                                        String s = plugin.getMsg("party.victory.subtitle");
+                                        if (t == null || t.isEmpty()) t = "&e&lVICTORY!";
+                                        if (s == null || s.isEmpty()) s = "&fYour team won the Match!";
+                                        String leader = finalWinnerLeader != null ? finalWinnerLeader : (finalWinner != null ? finalWinner.getName() : "Unknown");
+                                        t = t.replace("<leader>", leader);
+                                        s = s.replace("<leader>", leader);
                                         plugin.sendTitle(p, ChatColor.translateAlternateColorCodes('&', t), ChatColor.translateAlternateColorCodes('&', s), 10, 70, 20);
                                     } else if (finalIsDuelReq && finalLoser != null && plugin.duelScoreManager != null) {
                                         Player myOpponent = finalLoser;
-
                                         int myScore = plugin.duelScoreManager.getScore(p.getUniqueId(), myOpponent.getUniqueId());
                                         int opScore = plugin.duelScoreManager.getScore(myOpponent.getUniqueId(), p.getUniqueId());
-
                                         String title = ChatColor.translateAlternateColorCodes('&', "&e&lVICTORY!");
                                         String subtitle = ChatColor.translateAlternateColorCodes('&', "&a" + myScore + " &8- &c" + opScore);
                                         plugin.sendTitle(p, title, subtitle, 10, 70, 20);
@@ -812,15 +1039,21 @@ public class MatchListener implements Listener {
                                         String s = finalIsBlueWinner ? plugin.getMsg("bestof.blue-wins.subtitle") : plugin.getMsg("bestof.red-wins.subtitle");
                                         if(t == null || t.isEmpty()) t = finalIsBlueWinner ? "&9&lBLUE WINS!" : "&c&lRED WINS!";
                                         if(s == null || s.isEmpty()) s = finalIsBlueWinner ? "&9<blue_score> &8- &c<red_score>" : "&c<red_score> &8- &9<blue_score>";
-
                                         s = s.replace("<blue_score>", String.valueOf(finalBlueScore)).replace("<red_score>", String.valueOf(finalRedScore));
+                                        plugin.sendTitle(p, ChatColor.translateAlternateColorCodes('&', t), ChatColor.translateAlternateColorCodes('&', s), 10, 70, 20);
+                                    } else if (finalIsPartyFight) {
+                                        String t = plugin.getMsg("party.defeat.title");
+                                        String s = plugin.getMsg("party.defeat.subtitle");
+                                        if (t == null || t.isEmpty()) t = "&c&lDEFEAT!";
+                                        if (s == null || s.isEmpty()) s = "&c<opponent_leader> &fwon this Match!";
+                                        String oppLeader = finalWinnerLeader != null ? finalWinnerLeader : (finalWinner != null ? finalWinner.getName() : "Unknown");
+                                        t = t.replace("<opponent_leader>", oppLeader);
+                                        s = s.replace("<opponent_leader>", oppLeader);
                                         plugin.sendTitle(p, ChatColor.translateAlternateColorCodes('&', t), ChatColor.translateAlternateColorCodes('&', s), 10, 70, 20);
                                     } else if (finalIsDuelReq && finalWinner != null && plugin.duelScoreManager != null) {
                                         Player myOpponent = finalWinner;
-
                                         int myScore = plugin.duelScoreManager.getScore(p.getUniqueId(), myOpponent.getUniqueId());
                                         int opScore = plugin.duelScoreManager.getScore(myOpponent.getUniqueId(), p.getUniqueId());
-
                                         String title = ChatColor.translateAlternateColorCodes('&', "&c&lDEFEAT!");
                                         String subtitle = ChatColor.translateAlternateColorCodes('&', "&c" + myScore + " &8- &a" + opScore);
                                         plugin.sendTitle(p, title, subtitle, 10, 70, 20);

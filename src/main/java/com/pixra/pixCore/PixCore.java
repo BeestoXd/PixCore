@@ -135,6 +135,7 @@ public class PixCore extends JavaPlugin {
     public final Map<UUID, Integer>      playerMatchKills        = new HashMap<>();
     public final Map<UUID, Long>         killCountCooldown       = new HashMap<>();
     public final Map<Object, Map<UUID, Integer>> matchScores     = new HashMap<>();
+    public final Set<UUID>               recentPartyEndedPlayers = new HashSet<>();
 
     @Override
     public void onEnable() {
@@ -230,6 +231,7 @@ public class PixCore extends JavaPlugin {
         playerMatchKills.clear();
         killCountCooldown.clear();
         matchScores.clear();
+        recentPartyEndedPlayers.clear();
     }
 
     private void hookStrikePractice() {
@@ -712,7 +714,6 @@ public class PixCore extends JavaPlugin {
         try {
             org.bukkit.Color teamColor = teamColorUtil.getTeamColor(p, fight);
 
-            // === Step 1: Resolve base/server kit for this fight ===
             Object baseKit = null;
             try { baseKit = hook.getMGetKit().invoke(hook.getAPI(), p); } catch (Exception ignored) {}
             if (baseKit == null) {
@@ -742,23 +743,18 @@ public class PixCore extends JavaPlugin {
             String baseIconName = (baseIcon != null && baseIcon.hasItemMeta() && baseIcon.getItemMeta().hasDisplayName())
                     ? ChatColor.stripColor(baseIcon.getItemMeta().getDisplayName()).toLowerCase() : null;
 
-            // === Step 2: Find THIS player's personal edited kit via BattleKit.getKit(Player, icon, false) ===
             Object playerKit = null;
 
-            // Primary: BattleKit.getKit(Player, ItemStack icon, boolean onlyOwn) — the correct SP API
             if (hook.mBattleKitGetKitStatic != null && baseIcon != null) {
-                // Try as static method first
                 try {
                     playerKit = hook.mBattleKitGetKitStatic.invoke(null, p, baseIcon, false);
                 } catch (Exception e1) {
-                    // If not static, try as instance method on baseKit
                     try {
                         playerKit = hook.mBattleKitGetKitStatic.invoke(baseKit, p, baseIcon, false);
                     } catch (Exception ignored) {}
                 }
             }
 
-            // Fallback: API.getLastSelectedEditedKit(player)
             if (playerKit == null) {
                 try {
                     java.lang.reflect.Method mLast = hook.getMGetLastSelectedEditedKit();
@@ -767,7 +763,6 @@ public class PixCore extends JavaPlugin {
                         if (lastKit != null) {
                             String lastKitName = ChatColor.stripColor(
                                     (String) lastKit.getClass().getMethod("getName").invoke(lastKit)).toLowerCase();
-                            // Verify it matches the current fight kit
                             if (lastKitName.contains(baseName) || baseName.contains(lastKitName.replaceAll("-?\\d+$", ""))) {
                                 playerKit = lastKit;
                             }
@@ -776,10 +771,8 @@ public class PixCore extends JavaPlugin {
                 } catch (Exception ignored) {}
             }
 
-            // The kit we use for inventory: player's personal version if found, otherwise the base kit
             Object kitForInv = (playerKit != null) ? playerKit : baseKit;
 
-            // === Step 3: Get inventory from the resolved kit via getInv() ===
             List<ItemStack> kitInv = null;
             if (hook.mBattleKitGetInv != null) {
                 try {
@@ -789,7 +782,6 @@ public class PixCore extends JavaPlugin {
                 } catch (Exception ignored) {}
             }
 
-            // === Step 4: Get armor ===
             ItemStack helmet = null, chest = null, legs = null, boots = null;
             Object kitForArmor = (playerKit != null) ? playerKit : baseKit;
             try {
@@ -798,7 +790,6 @@ public class PixCore extends JavaPlugin {
                 if (hook.mBattleKitGetLeggings   != null) legs   = (ItemStack) hook.mBattleKitGetLeggings.invoke(kitForArmor);
                 if (hook.mBattleKitGetBoots      != null) boots  = (ItemStack) hook.mBattleKitGetBoots.invoke(kitForArmor);
             } catch (Exception ignored) {}
-            // If player kit had no armor, try base kit
             if (helmet == null && chest == null && legs == null && boots == null && playerKit != null) {
                 try {
                     if (hook.mBattleKitGetHelmet     != null) helmet = (ItemStack) hook.mBattleKitGetHelmet.invoke(baseKit);
@@ -808,7 +799,6 @@ public class PixCore extends JavaPlugin {
                 } catch (Exception ignored) {}
             }
 
-            // === Step 5: Clear and apply inventory directly (do NOT use giveKit) ===
             p.getInventory().clear();
             p.getInventory().setArmorContents(new org.bukkit.inventory.ItemStack[4]);
 
@@ -822,7 +812,6 @@ public class PixCore extends JavaPlugin {
                 }
                 p.getInventory().setContents(contents);
             } else {
-                // Absolute last resort: try giveKit on the playerKit or baseKit
                 Object kitToGive = (playerKit != null) ? playerKit : baseKit;
                 if (hook.mBattleKitGiveKit != null) {
                     try { hook.mBattleKitGiveKit.invoke(kitToGive, p); } catch (Exception ignored) {}
@@ -832,8 +821,7 @@ public class PixCore extends JavaPlugin {
             }
             p.updateInventory();
 
-            // === Step 6: Apply custom layout from YAML (only if no playerKit was found via API) ===
-            if (playerKit == null) {
+            {
                 List<Object> allKits = new ArrayList<>();
                 File spFolder = new File(getDataFolder().getParentFile(), "StrikePractice");
                 File pdFile   = new File(spFolder, "playerdata/" + p.getUniqueId() + ".yml");
@@ -920,7 +908,6 @@ public class PixCore extends JavaPlugin {
                 }
             }
 
-            // === Step 7: Color items and remove lobby items ===
             ItemStack[] contents = p.getInventory().getContents();
             for (int i = 0; i < contents.length; i++) {
                 ItemStack item = contents[i];
