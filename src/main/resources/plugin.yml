@@ -15,3 +15,6 @@ commands:
     description: Leaderboard
     usage: /leaderboard
     aliases: [lb]
+  party:
+    description: Party commands (redirects to StrikePractice party)
+    usage: /party <create|invite|join|kick|leave|disband|info|chat|fight>

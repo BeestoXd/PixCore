@@ -12,6 +12,7 @@ import com.pixra.pixCore.party.PartySplitManager;
 import com.pixra.pixCore.party.PartyVsPartyManager;
 import com.pixra.pixCore.placeholders.PixCorePlaceholders;
 import com.pixra.pixCore.respawn.RespawnManager;
+import com.pixra.pixCore.commands.PartyCommand;
 import com.pixra.pixCore.commands.PixCommand;
 import com.pixra.pixCore.util.SoundUtil;
 import com.pixra.pixCore.util.TeamColorUtil;
@@ -175,6 +176,10 @@ public class PixCore extends JavaPlugin {
         loadNoFallDamageConfig();
         setupTntVariables();
 
+        PartyCommand partyCommand = new PartyCommand();
+        if (getCommand("party") != null) getCommand("party").setExecutor(partyCommand);
+        getServer().getPluginManager().registerEvents(partyCommand, this);
+
         if (getCommand("pix")         != null) getCommand("pix").setExecutor(new PixCommand(this));
         if (getCommand("savelayout")  != null) getCommand("savelayout").setExecutor(new SaveLayoutCommand(this));
         if (getCommand("leaderboard") != null) getCommand("leaderboard").setExecutor(new LeaderboardCommand(this));
@@ -308,7 +313,7 @@ public class PixCore extends JavaPlugin {
         this.maxBuildY               = getConfig().getInt("settings.build-restrictions.max-build-y", 100);
         this.checkArenaBorders       = getConfig().getBoolean("settings.build-restrictions.check-arena-borders", true);
         this.buildRestrictionKits    = getConfig().getStringList("settings.build-restrictions.kits");
-        this.roundEndKits            = getConfig().getStringList("settings.round-end-kits");
+        this.roundEndKits            = getConfig().getStringList("settings.bestof-scored.kits");
         this.bowCooldownKits         = getConfig().getStringList("settings.bow-cooldown.kits");
         this.deathDisabledKits       = getConfig().getStringList("settings.death.disabled-kits");
         this.instantRespawnKits      = getConfig().getStringList("settings.death.instant-respawn-kits");

@@ -150,6 +150,7 @@ settings:
       3: "&c3"    # Emas/Orange
       2: "&c2"    # Merah Muda
       1: "&c1"    # Merah Tua
+      0: "&a&lFight!"
     messages:
       "5": "&a5"
       "4": "&a4"
@@ -222,6 +223,8 @@ settings:
     kits:
       - "thebridge"
       - "thebridgeelo"
+      - "mlgrush"
+      - "battlerush"
   bed-restore-kits:
     - "bedfight"
     - "fireballfight"

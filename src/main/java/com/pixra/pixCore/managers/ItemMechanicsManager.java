@@ -79,7 +79,8 @@ public class ItemMechanicsManager implements Listener {
         if (item != null) {
             String type = item.getType().name();
             if (type.endsWith("_SWORD") || type.endsWith("_AXE") || type.endsWith("_PICKAXE") ||
-                    type.endsWith("_SPADE") || type.endsWith("_SHOVEL") || type.equals("SHEARS")) {
+                    type.endsWith("_SPADE") || type.endsWith("_SHOVEL") || type.equals("SHEARS") ||
+                    type.equals("BOW")) {
 
                 if (makeItemUnbreakable(item)) {
                     event.getPlayer().updateInventory();
@@ -100,7 +101,8 @@ public class ItemMechanicsManager implements Listener {
                 type.endsWith("_PICKAXE") ||
                 type.endsWith("_SPADE") ||
                 type.endsWith("_SHOVEL") ||
-                type.equals("SHEARS")) {
+                type.equals("SHEARS") ||
+                type.equals("BOW")) {
 
             event.setCancelled(true);
 
