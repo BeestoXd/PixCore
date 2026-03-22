@@ -13,14 +13,26 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.lang.reflect.Constructor;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class BlockDisappearManager implements Listener {
 
     private final PixCore plugin;
     private boolean isLegacyVersion;
+
+    private final Map<UUID, List<BukkitTask>> playerTasks = new ConcurrentHashMap<>();
+
+    private final Map<UUID, List<Block>> playerBlocks = new ConcurrentHashMap<>();
+
+    private final Set<UUID> suppressedPlayers = ConcurrentHashMap.newKeySet();
 
     public BlockDisappearManager(PixCore plugin) {
         this.plugin = plugin;
@@ -33,11 +45,59 @@ public class BlockDisappearManager implements Listener {
         }
     }
 
+    private void registerTask(UUID uuid, BukkitTask task) {
+        playerTasks.computeIfAbsent(uuid, k -> new CopyOnWriteArrayList<>()).add(task);
+    }
+
+    private void registerBlock(UUID uuid, Block block) {
+        playerBlocks.computeIfAbsent(uuid, k -> new CopyOnWriteArrayList<>()).add(block);
+    }
+
+    private void removeTask(UUID uuid, BukkitTask task) {
+        List<BukkitTask> tasks = playerTasks.get(uuid);
+        if (tasks != null) tasks.remove(task);
+    }
+
+    private void removeBlock(UUID uuid, Block block) {
+        List<Block> blocks = playerBlocks.get(uuid);
+        if (blocks != null) blocks.remove(block);
+    }
+
+    public void suppressItemReturn(UUID uuid) {
+        suppressedPlayers.add(uuid);
+    }
+
+    public void unsuppressPlayer(UUID uuid) {
+        suppressedPlayers.remove(uuid);
+    }
+
+    public void cancelPlayerTasks(UUID uuid) {
+        suppressedPlayers.add(uuid);
+
+        List<BukkitTask> tasks = playerTasks.remove(uuid);
+        if (tasks != null) {
+            for (BukkitTask task : tasks) {
+                try { task.cancel(); } catch (Exception ignored) {}
+            }
+        }
+
+        List<Block> blocks = playerBlocks.remove(uuid);
+        if (blocks != null) {
+            for (Block block : blocks) {
+                if (block != null && block.getType() != Material.AIR) {
+                    block.setType(Material.AIR);
+                    sendBlockBreakPacket(block.getLocation(), 10);
+                }
+            }
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
         Block block = event.getBlock();
         String kitName = plugin.getKitName(player);
+        UUID uuid = player.getUniqueId();
 
         if (plugin.getConfig().getBoolean("settings.spawn-protection-break.enabled", false)) {
             List<String> spawnBreakKits = plugin.getConfig().getStringList("settings.spawn-protection-break.kits");
@@ -53,7 +113,7 @@ public class BlockDisappearManager implements Listener {
             }
 
             if (isAllowedSpawnKit) {
-                Location spawnLoc = plugin.getArenaSpawnLocations().get(player.getUniqueId());
+                Location spawnLoc = plugin.getArenaSpawnLocations().get(uuid);
 
                 if (spawnLoc != null) {
                     if (block.getLocation().getBlockX() == spawnLoc.getBlockX() &&
@@ -64,14 +124,17 @@ public class BlockDisappearManager implements Listener {
                         int speed = plugin.getConfig().getInt("settings.spawn-protection-break.animation-tick-interval", 2);
                         boolean sound = plugin.getConfig().getBoolean("settings.spawn-protection-break.play-sound", true);
 
-                        new BukkitRunnable() {
+                        BukkitTask[] taskRef = new BukkitTask[1];
+                        taskRef[0] = new BukkitRunnable() {
                             @Override
                             public void run() {
-                                if (player == null || !player.isOnline() || !plugin.isInFight(player)) return;
+                                removeTask(uuid, taskRef[0]);
+                                if (!player.isOnline() || !plugin.isInFight(player)) return;
 
-                                startAnimationTask(player, block, speed, sound, false, kitName);
+                                startAnimationTask(uuid, player, block, speed, sound, false, kitName);
                             }
                         }.runTaskLater(plugin, delay * 20L);
+                        registerTask(uuid, taskRef[0]);
 
                         return;
                     }
@@ -100,42 +163,51 @@ public class BlockDisappearManager implements Listener {
         int delaySeconds = plugin.getConfig().getInt("settings.block-disappear.delay-before-break", 3);
         int animationSpeed = plugin.getConfig().getInt("settings.block-disappear.animation-tick-interval", 4);
         boolean playSound = plugin.getConfig().getBoolean("settings.block-disappear.play-sound", true);
-
         boolean returnItem = plugin.getConfig().getBoolean("settings.block-disappear.return-item", true);
 
-        new BukkitRunnable() {
+        BukkitTask[] taskRef = new BukkitTask[1];
+        taskRef[0] = new BukkitRunnable() {
             @Override
             public void run() {
-                if (player == null || !player.isOnline() || !plugin.isInFight(player)) return;
+                removeTask(uuid, taskRef[0]);
+                if (!player.isOnline() || !plugin.isInFight(player)) return;
 
-                if (block.getType() == Material.AIR) {
-                    return;
-                }
-                startAnimationTask(player, block, animationSpeed, playSound, returnItem, kitName);
+                if (block.getType() == Material.AIR) return;
+
+                startAnimationTask(uuid, player, block, animationSpeed, playSound, returnItem, kitName);
             }
         }.runTaskLater(plugin, delaySeconds * 20L);
+        registerTask(uuid, taskRef[0]);
     }
 
-    private void startAnimationTask(Player player, Block block, int interval, boolean playSound, boolean returnItem, String kitName) {
-        new BukkitRunnable() {
+    private void startAnimationTask(UUID uuid, Player player, Block block, int interval, boolean playSound, boolean returnItem, String kitName) {
+        registerBlock(uuid, block);
+
+        BukkitTask[] taskRef = new BukkitTask[1];
+        taskRef[0] = new BukkitRunnable() {
             int stage = 0;
 
             @Override
             public void run() {
-                if (player == null || !player.isOnline() || !plugin.isInFight(player)) {
+                if (!player.isOnline() || !plugin.isInFight(player)) {
                     sendBlockBreakPacket(block.getLocation(), 10);
+                    removeTask(uuid, taskRef[0]);
+                    removeBlock(uuid, block);
                     this.cancel();
                     return;
                 }
 
                 if (block.getType() == Material.AIR) {
                     sendBlockBreakPacket(block.getLocation(), 10);
+                    removeTask(uuid, taskRef[0]);
+                    removeBlock(uuid, block);
                     this.cancel();
                     return;
                 }
 
                 if (stage > 9) {
-                    if (returnItem) {
+
+                    if (!suppressedPlayers.contains(uuid) && returnItem) {
                         if (kitName != null && kitName.equalsIgnoreCase("tntsumo")) {
                             giveTntSumoItems(player);
                         } else {
@@ -159,6 +231,8 @@ public class BlockDisappearManager implements Listener {
                         playBreakSound(block);
                     }
                     sendBlockBreakPacket(block.getLocation(), 10);
+                    removeTask(uuid, taskRef[0]);
+                    removeBlock(uuid, block);
                     this.cancel();
                     return;
                 }
@@ -167,6 +241,7 @@ public class BlockDisappearManager implements Listener {
                 stage++;
             }
         }.runTaskTimer(plugin, 0L, interval);
+        registerTask(uuid, taskRef[0]);
     }
 
     private void giveTntSumoItems(Player player) {
@@ -188,7 +263,6 @@ public class BlockDisappearManager implements Listener {
     }
 
     private void playBreakSound(Block block) {
-        // Menggunakan metode cross-version terbaru
         Sound sound = plugin.getSoundByName("BLOCK_WOOL_BREAK");
         if (sound == null) sound = plugin.getSoundByName("DIG_STONE");
 

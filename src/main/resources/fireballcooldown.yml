@@ -1,0 +1,7 @@
+fireball-cooldown:
+  enabled: true
+  seconds: 3
+  message: "&cFireball is on cooldown! &e<seconds>s remaining."
+  kits:
+    - fireballfight
+    - fireballfightelo

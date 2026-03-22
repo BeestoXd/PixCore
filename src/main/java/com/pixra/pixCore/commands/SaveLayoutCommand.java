@@ -5,11 +5,9 @@ import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import java.io.File;
 import java.util.*;
 
 public class SaveLayoutCommand implements CommandExecutor {
@@ -44,26 +42,25 @@ public class SaveLayoutCommand implements CommandExecutor {
 
             String baseName = ChatColor.stripColor((String) baseKit.getClass().getMethod("getName").invoke(baseKit)).toLowerCase();
 
-            // UBAH: Simpan ke folder PixCore/layouts agar tidak tertimpa oleh cache StrikePractice
-            File layoutsFolder = new File(plugin.getDataFolder(), "layouts");
-            if (!layoutsFolder.exists()) {
-                layoutsFolder.mkdirs();
-            }
-            File pdFile = new File(layoutsFolder, p.getUniqueId().toString() + ".yml");
+            List<ItemStack> kitDefaultInv = null;
+            try {
+                Object rawInv = null;
+                try { rawInv = baseKit.getClass().getMethod("getInv").invoke(baseKit); }
+                catch (Exception ignored) {}
+                if (rawInv == null) {
+                    try { rawInv = baseKit.getClass().getMethod("getInventory").invoke(baseKit); }
+                    catch (Exception ignored) {}
+                }
+                if (rawInv instanceof List) {
+                    kitDefaultInv = new ArrayList<>((List<ItemStack>) rawInv);
+                } else if (rawInv instanceof ItemStack[]) {
+                    kitDefaultInv = new ArrayList<>(java.util.Arrays.asList((ItemStack[]) rawInv));
+                }
+            } catch (Exception ignored) {}
 
-            YamlConfiguration pdConfig;
-            if (pdFile.exists()) {
-                pdConfig = YamlConfiguration.loadConfiguration(pdFile);
-            } else {
-                pdConfig = new YamlConfiguration();
-            }
-
-            List<Object> customKits = (List<Object>) pdConfig.getList("kits");
-            if (customKits == null) {
-                customKits = new ArrayList<>();
-            }
-
-            boolean updated = false;
+            List<ItemStack> kitRemainder = (kitDefaultInv != null)
+                    ? new ArrayList<>(kitDefaultInv) : new ArrayList<>();
+            boolean hasKitReference = !kitRemainder.isEmpty();
 
             ItemStack[] currentContents = p.getInventory().getContents();
             List<ItemStack> newInv = new ArrayList<>();
@@ -82,52 +79,36 @@ public class SaveLayoutCommand implements CommandExecutor {
                         }
                     }
                 }
-                newInv.add((item != null && !isBook) ? item.clone() : null);
-            }
 
-            for (int i = 0; i < customKits.size(); i++) {
-                Object customKit = customKits.get(i);
-                boolean isMatch = false;
-
-                if (!Map.class.isAssignableFrom(customKit.getClass())) {
-                    String kName = "";
-                    try { kName = ChatColor.stripColor((String) customKit.getClass().getMethod("getName").invoke(customKit)).toLowerCase(); } catch (Exception ignored) {}
-                    if (kName.contains(baseName)) isMatch = true;
-                } else {
-                    Map<String, Object> map = (Map<String, Object>) customKit;
-                    String kName = map.containsKey("name") ? ChatColor.stripColor(String.valueOf(map.get("name"))).toLowerCase() : "";
-                    if (kName.contains(baseName)) isMatch = true;
-                }
-
-                if (isMatch) {
-                    if (customKit instanceof Map) {
-                        Map<String, Object> map = (Map<String, Object>) customKit;
-                        map.put("inventory", newInv);
-                        customKits.set(i, map);
-                    } else {
-                        Map<String, Object> map = new LinkedHashMap<>();
-                        map.put("==", "BattleKit");
-                        try { map.put("name", customKit.getClass().getMethod("getName").invoke(customKit)); } catch(Exception e){}
-                        try { map.put("icon", customKit.getClass().getMethod("getIcon").invoke(customKit)); } catch(Exception e){}
-                        map.put("inventory", newInv);
-                        customKits.set(i, map);
+                if (item != null && !isBook) {
+                    ItemStack matchedKitItem = null;
+                    for (int j = 0; j < kitRemainder.size(); j++) {
+                        ItemStack kitItem = kitRemainder.get(j);
+                        if (kitItem != null && plugin.isItemMatch(item, kitItem)) {
+                            matchedKitItem = kitItem;
+                            kitRemainder.remove(j);
+                            break;
+                        }
                     }
-                    updated = true;
-                    break;
+
+                    if (matchedKitItem != null) {
+                        ItemStack toSave = item.clone();
+                        toSave.setAmount(matchedKitItem.getAmount());
+                        newInv.add(toSave);
+                    } else if (!hasKitReference) {
+                        newInv.add(item.clone());
+                    } else {
+                        newInv.add(null);
+                    }
+                } else {
+                    newInv.add(null);
                 }
             }
 
-            if (!updated) {
-                Map<String, Object> map = new LinkedHashMap<>();
-                map.put("==", "BattleKit");
-                try { map.put("name", baseKit.getClass().getMethod("getName").invoke(baseKit)); } catch(Exception e){}
-                try { map.put("icon", baseKit.getClass().getMethod("getIcon").invoke(baseKit)); } catch(Exception e){}
-                map.put("inventory", newInv);
-                customKits.add(map);
+            if (!plugin.saveLayoutToPreferredStorage(p, baseKit, newInv)) {
+                p.sendMessage(ChatColor.RED + "An error occurred while saving layout.");
+                return true;
             }
-
-            pdConfig.set("kits", customKits);
-            pdConfig.save(pdFile);
 
             p.sendMessage(ChatColor.GREEN + "Kit layout successfully saved! It will be used in your next matches permanently.");
 

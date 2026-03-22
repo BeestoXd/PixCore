@@ -413,8 +413,6 @@ public class PartyVsPartyManager implements Listener {
         }
 
         event.setCancelled(true);
-        Location spawn = plugin.arenaSpawnLocations.get(player.getUniqueId());
-        if (spawn != null) player.teleport(faceToward(spawn, oppSpawnRef));
 
         long now = System.currentTimeMillis();
         if (portalCooldown.getOrDefault(player.getUniqueId(), 0L) > now) return;
@@ -456,8 +454,14 @@ public class PartyVsPartyManager implements Listener {
             final int finalScore1 = scores[0];
             final int finalScore2 = scores[1];
 
+            final Location spectatorPos = (plugin.partyFFAManager != null)
+                    ? plugin.partyFFAManager.getCenterAt100(finalFight) : null;
             for (Player p : allFightPlayers) {
-                if (p != null && p.isOnline()) plugin.frozenPlayers.add(p.getUniqueId());
+                if (p == null || !p.isOnline()) continue;
+                plugin.frozenPlayers.remove(p.getUniqueId());
+                if (spectatorPos != null) p.teleport(spectatorPos);
+                if (plugin.partyFFAManager != null)
+                    plugin.partyFFAManager.applyCustomSpectator(p, allFightPlayers);
             }
 
             new BukkitRunnable() {
@@ -484,7 +488,10 @@ public class PartyVsPartyManager implements Listener {
                         plugin.sendTitle(p, t, s, 10, 80, 20);
                         plugin.playEndMatchSounds(p, isWinTeam);
                         if (!isWinTeam) {
-                            try { p.getWorld().strikeLightningEffect(p.getLocation()); } catch (Exception ignored) {}
+                            org.bukkit.Sound thunderSound = plugin.getSoundByName("ENTITY_LIGHTNING_BOLT_THUNDER");
+                            if (thunderSound != null) {
+                                try { p.playSound(p.getLocation(), thunderSound, 2.0f, 1.0f); } catch (Exception ignored) {}
+                            }
                         }
                     }
                 }
@@ -505,7 +512,7 @@ public class PartyVsPartyManager implements Listener {
                         finalFight.getClass().getMethod("forceEnd", String.class).invoke(finalFight, "");
                     } catch (Exception ignored) {}
                 }
-            }.runTaskLater(plugin, 60L);
+            }.runTaskLater(plugin, 12L);
 
         } else {
             for (Player p : allFightPlayers) {
@@ -532,7 +539,6 @@ public class PartyVsPartyManager implements Listener {
                         Location oppS = null;
                         for (Player o : opp) { oppS = plugin.arenaSpawnLocations.get(o.getUniqueId()); if (oppS != null) break; }
                         p.teleport(faceToward(s, oppS));
-                        plugin.applyStartKit(p, finalFight);
                     }
                 }
             }.runTaskLater(plugin, 5L);
@@ -546,17 +552,21 @@ public class PartyVsPartyManager implements Listener {
             new BukkitRunnable() {
                 @Override public void run() {
                     for (Player p : players) {
-                        if (p != null && p.isOnline()) plugin.frozenPlayers.remove(p.getUniqueId());
+                        if (p == null || !p.isOnline()) continue;
+                        plugin.frozenPlayers.remove(p.getUniqueId());
+                        if (plugin.bridgeBlockResetManager != null)
+                            plugin.bridgeBlockResetManager.scheduleRestore(p, 2L, 5L, 10L);
                     }
                 }
             }.runTaskLater(plugin, 20L);
             return;
         }
 
-        final int maxSeconds = plugin.startCountdownDuration;
+        final int maxSeconds = 3;
         new BukkitRunnable() {
             int current = maxSeconds;
             @Override public void run() {
+                if (bridgeEndedFights.contains(fight)) { cancel(); return; }
                 try {
                     if ((boolean) fight.getClass().getMethod("hasEnded").invoke(fight)) { cancel(); return; }
                 } catch (Exception ignored) {}
@@ -572,6 +582,8 @@ public class PartyVsPartyManager implements Listener {
                             p.playSound(p.getLocation(), plugin.startMatchSound,
                                     plugin.startCountdownVolume, plugin.startCountdownPitch);
                         plugin.frozenPlayers.remove(p.getUniqueId());
+                        if (plugin.bridgeBlockResetManager != null)
+                            plugin.bridgeBlockResetManager.scheduleRestore(p, 2L, 5L, 10L);
                     }
                     cancel();
                     return;

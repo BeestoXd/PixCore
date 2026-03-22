@@ -100,6 +100,10 @@ public final class SoundUtil {
         if (name.contains("STONE") && (name.contains("BREAK") || name.contains("DIG"))) {
             return new String[]{"BLOCK_STONE_BREAK", "DIG_STONE"};
         }
+        if (name.contains("THUNDER") || name.contains("LIGHTNING")) {
+            return new String[]{"ENTITY_LIGHTNING_BOLT_THUNDER", "ENTITY_LIGHTNING_THUNDER",
+                    "AMBIENCE_THUNDER"};
+        }
         return new String[0];
     }
 }

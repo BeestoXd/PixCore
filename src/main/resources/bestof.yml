@@ -1,0 +1,9 @@
+# Best-of score limit configuration
+# Controls the denominator shown in the scoreboard (e.g. 0/5)
+# per kit name. Set score-limit to the total number of rounds.
+
+stickfight:
+  score-limit: 5
+
+stickfightelo:
+  score-limit: 5

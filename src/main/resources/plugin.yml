@@ -5,8 +5,8 @@ api-version: '1.21'
 softdepend: [StrikePractice, PlaceholderAPI]
 commands:
   pix:
-    description: reload plugin
-    usage: /pix reload
+    description: PixCore admin commands
+    usage: /pix <reload|pl|bed|leaderboard>
     permission: pixcore.admin
   savelayout:
     description: Save custom layouts manually created while in battle.
@@ -15,6 +15,9 @@ commands:
     description: Leaderboard
     usage: /leaderboard
     aliases: [lb]
+  l:
+    description: Leave the current match (short alias for /leavematch)
+    usage: /l
   party:
     description: Party commands (redirects to StrikePractice party)
     usage: /party <create|invite|join|kick|leave|disband|info|chat|fight>

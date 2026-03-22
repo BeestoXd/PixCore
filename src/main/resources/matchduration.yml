@@ -1,0 +1,30 @@
+enabled: true
+
+kits:
+  thebridge: 900
+  thebridgeelo: 900
+  battlerush: 900
+  mlgrush: 900
+  stickfight: 900
+
+ending-soon-threshold: 60
+
+warnings:
+  - seconds: 300
+    message: "&e[Timer] &f5 minutes remaining!"
+  - seconds: 120
+    message: "&e[Timer] &f2 minutes remaining!"
+  - seconds: 60
+    message: "&e[Timer] &f1 minute remaining! Finish it now!"
+  - seconds: 30
+    message: "&e[Timer] &f30 seconds remaining!"
+  - seconds: 10
+    message: "&e[Timer] &f10 seconds remaining!"
+
+draw:
+  title: "&e&lDRAW!"
+  subtitle: "&fTime's up — no winner."
+  message: "&e[Timer] &fTime limit reached! Match ended as a &eDRAW &f— streaks unchanged."
+  fade-in: 10
+  stay: 60
+  fade-out: 20

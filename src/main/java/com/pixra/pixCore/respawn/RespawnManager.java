@@ -23,13 +23,16 @@ public class RespawnManager {
 
     public void startRespawn(Player player, Location arenaSpawn) {
         UUID uuid = player.getUniqueId();
-        if (respawnLocations.containsKey(uuid)) return;
+        if (respawnLocations.containsKey(uuid))
+            return;
         respawnLocations.put(uuid, arenaSpawn.clone());
 
         if (pendingTasks.containsKey(uuid)) {
             pendingTasks.get(uuid).cancel();
             pendingTasks.remove(uuid);
         }
+
+        plugin.suppressBlockDisappearReturn(uuid);
 
         clearInventory(player);
 
@@ -38,7 +41,8 @@ public class RespawnManager {
         BukkitTask task = new BukkitRunnable() {
             @Override
             public void run() {
-                if (!respawnLocations.containsKey(uuid)) return;
+                if (!respawnLocations.containsKey(uuid))
+                    return;
 
                 clearInventory(player);
                 pendingTasks.remove(uuid);
@@ -48,12 +52,12 @@ public class RespawnManager {
 
         Location currentLocation = player.getLocation();
         if (currentLocation.getY() <= 0 || currentLocation.getY() <= arenaSpawn.getY() - 10) {
-            Location floatingLoc = currentLocation.clone();
-            floatingLoc.setY(arenaSpawn.getY());
-            player.teleport(floatingLoc);
-        } else {
-            player.teleport(currentLocation.add(0, 0.5, 0));
+
+            Location safePos = currentLocation.clone();
+            safePos.setY(arenaSpawn.getY() + 5);
+            player.teleport(safePos);
         }
+
     }
 
     private void clearInventory(Player player) {
@@ -62,7 +66,8 @@ public class RespawnManager {
             player.getInventory().setArmorContents(null);
             try {
                 player.getInventory().setItemInOffHand(null);
-            } catch (NoSuchMethodError ignored) {}
+            } catch (NoSuchMethodError ignored) {
+            }
             player.updateInventory();
         }
     }
@@ -70,33 +75,34 @@ public class RespawnManager {
     public void finishRespawn(Player player) {
         UUID uuid = player.getUniqueId();
         Location spawn = respawnLocations.get(uuid);
-        if (spawn == null) spawn = player.getLocation();
+        if (spawn == null)
+            spawn = player.getLocation();
+        final Location finalSpawn = spawn;
         Bukkit.getScheduler().runTask(plugin, () -> {
+
+            plugin.suppressBlockDisappearReturn(uuid);
             plugin.removeSpectator(player, false);
+
+            player.teleport(finalSpawn);
+
+            if (plugin.partyFFAManager != null)
+                plugin.partyFFAManager.startRespawnRedirect(player);
             plugin.respawnInFight(player);
             for (Player online : Bukkit.getOnlinePlayers()) {
                 online.showPlayer(player);
             }
+            if (player.isOnline()) plugin.syncLayoutInstant(player, 6);
 
-            Object fight = null;
-            try {
-                if (plugin.isHooked() && plugin.getMGetFight() != null && plugin.getStrikePracticeAPI() != null) {
-                    fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player);
-                }
-            } catch (Exception ignored) {}
-            final Object finalFight = fight;
+            if (plugin.partyFFAManager != null) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (player.isOnline()) plugin.partyFFAManager.restoreArmorColor(player);
+                }, 3L);
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (player.isOnline()) plugin.partyFFAManager.restoreArmorColor(player);
+                }, 7L);
+            }
 
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (player.isOnline()) {
-                    plugin.applyStartKit(player, finalFight);
-                }
-            }, 5L);
-
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (player.isOnline()) {
-                    plugin.applyStartKit(player, finalFight);
-                }
-            }, 15L);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> plugin.unsuppressBlockDisappear(uuid), 1L);
 
             cleanup(uuid);
         });
@@ -112,12 +118,14 @@ public class RespawnManager {
 
     public void forceStop(Player player) {
         if (player != null && respawnLocations.containsKey(player.getUniqueId())) {
+            plugin.cancelBlockDisappear(player.getUniqueId());
             plugin.removeSpectator(player, true);
 
             for (Player online : Bukkit.getOnlinePlayers()) {
                 online.showPlayer(player);
             }
             cleanup(player.getUniqueId());
+            plugin.unsuppressBlockDisappear(player.getUniqueId());
         }
     }
 }

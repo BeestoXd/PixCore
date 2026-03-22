@@ -26,7 +26,6 @@ public class BedDestroyTitleManager {
 
         plugin.sendTitle(victim, title, subtitle, 10, 70, 20);
 
-        // Menggunakan metode cross-version yang baru diperbarui
         Sound soundToPlay = plugin.getSoundByName("ENTITY_ENDER_DRAGON_GROWL");
 
         if (soundToPlay != null) {

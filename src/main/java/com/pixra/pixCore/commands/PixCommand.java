@@ -1,6 +1,7 @@
 package com.pixra.pixCore.commands;
 
 import com.pixra.pixCore.PixCore;
+import com.pixra.pixCore.util.PluginReloadUtil;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
@@ -35,18 +36,48 @@ public class PixCommand implements CommandExecutor {
                 plugin.loadConfigValues();
                 plugin.loadTntTickConfig();
                 plugin.loadNoFallDamageConfig();
+                plugin.loadArrowGiveConfig();
+                plugin.loadBestofConfig();
 
-                if (plugin.customKnockbackManager != null) plugin.customKnockbackManager.loadConfig();
                 if (plugin.bowHitMessageManager != null) plugin.bowHitMessageManager.loadConfig();
                 if (plugin.stickFightManager != null) plugin.stickFightManager.loadConfig();
                 if (plugin.getKillMessageManager() != null) plugin.getKillMessageManager().loadConfig();
                 if (plugin.hitActionBarManager != null) plugin.hitActionBarManager.loadConfig();
+                if (plugin.fireballKnockbackManager != null) plugin.fireballKnockbackManager.reload();
+                if (plugin.fireballCooldownManager  != null) plugin.fireballCooldownManager.reload();
+                if (plugin.tntMechanicsManager != null) plugin.tntMechanicsManager.reload();
+                if (plugin.voidManager != null) plugin.voidManager.reload();
 
                 if (plugin.leaderboardManager != null) plugin.leaderboardManager.reload();
                 if (plugin.hologramManager != null) plugin.hologramManager.reload();
                 if (plugin.leaderboardGUIManager != null) plugin.leaderboardGUIManager.loadConfig();
 
                 sender.sendMessage(ChatColor.GREEN + "[PixCore] Plugin configurations reloaded!");
+                return true;
+            }
+
+            if (args[0].equalsIgnoreCase("pl")) {
+                if (!sender.hasPermission("pixcore.admin")) {
+                    sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                    return true;
+                }
+
+                if (args.length >= 2 && args[1].equalsIgnoreCase("reload")) {
+                    sender.sendMessage(ChatColor.YELLOW + "[PixCore] Mereload PixCore...");
+                    final String name = plugin.getName();
+                    org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        StringBuilder error = new StringBuilder();
+                        boolean success = PluginReloadUtil.reloadPlugin(name, error);
+                        if (success) {
+                            sender.sendMessage(ChatColor.GREEN + "[PixCore] PixCore berhasil direload!");
+                        } else {
+                            sender.sendMessage(ChatColor.RED + "[PixCore] Gagal reload: " + error);
+                        }
+                    }, 1L);
+                    return true;
+                }
+
+                sender.sendMessage(ChatColor.RED + "Usage: /pix pl reload");
                 return true;
             }
 
@@ -327,7 +358,7 @@ public class PixCommand implements CommandExecutor {
                     if (args.length == 3 && args[2].equalsIgnoreCase("all")) {
                         plugin.leaderboardManager.resetAllData();
                         if (plugin.hologramManager != null) plugin.hologramManager.reload();
-                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Berhasil menghapus SELURUH data leaderboard (Winstreak, Wins, Kills untuk semua Kits)!");
+                        sender.sendMessage(ChatColor.GREEN + "[PixCore] Berhasil menghapus SELURUH data leaderboard (Daily Streak, Wins, Kills untuk semua Kits)!");
                         return true;
                     }
 
@@ -354,6 +385,7 @@ public class PixCommand implements CommandExecutor {
 
         sender.sendMessage(ChatColor.YELLOW + "=== PixCore Commands ===");
         sender.sendMessage(ChatColor.YELLOW + "/pix reload" + ChatColor.GRAY + " - Reload configurations");
+        sender.sendMessage(ChatColor.YELLOW + "/pix pl reload <plugin>" + ChatColor.GRAY + " - Reload plugin JAR tanpa restart server");
         sender.sendMessage(ChatColor.YELLOW + "/pix bed" + ChatColor.GRAY + " - Get the custom Arena Bed Fixer");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard add <kit>" + ChatColor.GRAY + " - Register kit for countdown holograms");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard remove <kit>" + ChatColor.GRAY + " - Unregister kit countdown hologram");
@@ -372,4 +404,5 @@ public class PixCommand implements CommandExecutor {
 
         return true;
     }
+
 }

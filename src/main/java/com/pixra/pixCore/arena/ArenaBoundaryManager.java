@@ -38,12 +38,37 @@ public class ArenaBoundaryManager {
         }
     }
 
-    public boolean checkArenaBorder(Player player, Block block) {
+    private Object getArenaForPlayer(Player player) {
         try {
             Object fight = mGetFight.invoke(strikePracticeAPI, player);
-            if (fight == null) return false;
+            if (fight == null) return null;
+            return mGetArena.invoke(fight);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
-            Object arena = mGetArena.invoke(fight);
+    public boolean checkBuildHeight(Player player, Block block) {
+        try {
+            Object arena = getArenaForPlayer(player);
+            if (arena == null) return false;
+
+            Location corner1 = getCorner1(arena);
+            Location corner2 = getCorner2(arena);
+
+            if (corner1 == null || corner2 == null) return false;
+
+            int maxY = Math.max(corner1.getBlockY(), corner2.getBlockY());
+            return block.getY() > maxY;
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean checkArenaBorder(Player player, Block block) {
+        try {
+            Object arena = getArenaForPlayer(player);
             if (arena == null) return false;
 
             Location corner1 = getCorner1(arena);

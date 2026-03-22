@@ -10,9 +10,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.Location;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -40,6 +40,72 @@ public class BedListener implements Listener {
         if (typeName.contains("BED_BLOCK") || typeName.endsWith("_BED")) {
             event.setCancelled(true);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onBlockDamageOwnBed(BlockDamageEvent event) {
+        if (!plugin.isHooked()) return;
+        String typeName = event.getBlock().getType().name();
+        if (!typeName.contains("BED_BLOCK") && !typeName.endsWith("_BED")) return;
+        Player player = event.getPlayer();
+        if (!plugin.isInFight(player)) return;
+        try {
+            Object fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player);
+            if (fight == null) return;
+            if (plugin.partyFFAManager != null && plugin.partyFFAManager.isPartyFFA(fight)) {
+                if (plugin.partyFFAManager.isOwnBed(player, event.getBlock(), fight)) {
+                    event.setCancelled(true);
+                    plugin.sendCooldownMessage(player, "bed-break-self");
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @SuppressWarnings("unchecked")
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockBreakOwnBedEarly(BlockBreakEvent event) {
+        if (!plugin.isHooked()) return;
+        String typeName = event.getBlock().getType().name();
+        if (!typeName.contains("BED_BLOCK") && !typeName.endsWith("_BED")) return;
+        Player player = event.getPlayer();
+        if (!plugin.isInFight(player)) return;
+        try {
+            Object fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player);
+            if (fight == null) return;
+            Block bedBlock = event.getBlock();
+            if (plugin.partyFFAManager != null && plugin.partyFFAManager.isPartyFFA(fight)) {
+                if (plugin.partyFFAManager.isOwnBed(player, bedBlock, fight)) {
+                    event.setCancelled(true);
+                }
+            } else {
+                Block otherHalf = null;
+                BlockFace[] faces = {BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST};
+                for (BlockFace face : faces) {
+                    Block rel = bedBlock.getRelative(face);
+                    if (rel.getType().name().contains("BED_BLOCK") || rel.getType().name().endsWith("_BED")) {
+                        otherHalf = rel; break;
+                    }
+                }
+                boolean isP1Team = false;
+                Player p1 = null;
+                if (plugin.getMGetFirstPlayer() != null) {
+                    try { p1 = (Player) plugin.getMGetFirstPlayer().invoke(fight); } catch (Exception ignored) {}
+                }
+                if (p1 != null && p1.getUniqueId().equals(player.getUniqueId())) isP1Team = true;
+                if (isOwnBed(player, bedBlock, otherHalf, fight, isP1Team)) {
+                    event.setCancelled(true);
+                }
+
+                if (!event.isCancelled()) {
+                    String kitName = plugin.getKitName(player);
+                    if (kitName != null && (kitName.equalsIgnoreCase("mlgrush")
+                            || kitName.equalsIgnoreCase("mlgrushelo"))) {
+                        event.setCancelled(true);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -104,6 +170,11 @@ public class BedListener implements Listener {
                         String enemyColorCode = "§f";
                         String enemyTeamFullName = "§fOpponent";
                         String playerColorCode = plugin.getTeamColorCode(player, fight);
+
+                        if (plugin.partyFFAManager != null && plugin.partyFFAManager.isPartyFFA(fight)) {
+                            String ffaCode = plugin.partyFFAManager.getFfaColorCode(player);
+                            if (ffaCode != null) playerColorCode = ffaCode;
+                        }
                         String playerTeamFullName = plugin.getColorNameFromCode(playerColorCode);
 
                         if (playerColorCode.equals("§9")) { enemyColorCode = "§c"; enemyTeamFullName = "§cRed"; }
@@ -134,28 +205,34 @@ public class BedListener implements Listener {
                             }
                         }
 
-                        if (isOwnBed(player, bedBlock, otherHalf, fight, isP1Team)) {
+                        if (plugin.partyFFAManager != null && plugin.partyFFAManager.isPartyFFA(fight)) {
+                            if (plugin.partyFFAManager.isOwnBed(player, bedBlock, fight)) {
+                                event.setCancelled(true);
+                                plugin.sendCooldownMessage(player, "bed-break-self");
+                                return;
+                            }
+                        } else if (isOwnBed(player, bedBlock, otherHalf, fight, isP1Team)) {
                             event.setCancelled(true);
                             plugin.sendCooldownMessage(player, "bed-break-self");
                             return;
                         }
 
-                        if (event.isCancelled()) return;
-
                         String kitName = plugin.getKitName(player);
-                        boolean isMlgRush = kitName != null && (kitName.equalsIgnoreCase("mlgrush") || kitName.equalsIgnoreCase("mlgrushelo"));
+                        boolean isMlgRush = kitName != null && (kitName.equalsIgnoreCase("mlgrush")
+                                || kitName.equalsIgnoreCase("mlgrushelo"));
+                        if (isMlgRush) {
 
-                        if (isMlgRush && plugin.getClsBestOfFight() != null && plugin.getClsBestOfFight().isInstance(fight)) {
                             event.setCancelled(true);
 
-                            if (mlgRushCooldown.containsKey(player.getUniqueId()) && System.currentTimeMillis() - mlgRushCooldown.get(player.getUniqueId()) < 2000) {
+                            if (mlgRushCooldown.containsKey(player.getUniqueId())
+                                    && System.currentTimeMillis() - mlgRushCooldown.get(player.getUniqueId()) < 2000) {
                                 return;
                             }
                             mlgRushCooldown.put(player.getUniqueId(), System.currentTimeMillis());
 
                             try {
-                                Player opponent = null;
 
+                                Player opponent = null;
                                 if (plugin.getMGetPlayersInFight() != null) {
                                     List<Player> fPlayers = (List<Player>) plugin.getMGetPlayersInFight().invoke(fight);
                                     if (fPlayers != null) {
@@ -167,38 +244,33 @@ public class BedListener implements Listener {
                                         }
                                     }
                                 }
-
                                 if (opponent == null && plugin.getMGetOpponents() != null) {
-                                    List<String> opponents = (List<String>) plugin.getMGetOpponents().invoke(fight, player);
-                                    if (opponents != null && !opponents.isEmpty()) {
-                                        opponent = Bukkit.getPlayer(opponents.get(0));
+                                    List<String> ops = (List<String>) plugin.getMGetOpponents().invoke(fight, player);
+                                    if (ops != null && !ops.isEmpty()) {
+                                        opponent = Bukkit.getPlayer(ops.get(0));
                                     }
                                 }
 
                                 if (opponent != null) {
-                                    plugin.sendTitle(player, "§a§lBED DESTROYED!", "§fYou scored a point!", 5, 30, 10);
+
+                                    plugin.sendTitle(player,   "§a§lBED DESTROYED!", "§fYou scored a point!", 5, 30, 10);
                                     plugin.sendTitle(opponent, "§c§lBED DESTROYED!", "§f" + player.getName() + " scored a point!", 5, 30, 10);
 
+                                    plugin.mlgRushBedDeaths.add(opponent.getUniqueId());
                                     opponent.setNoDamageTicks(0);
                                     opponent.setHealth(0.1);
                                     opponent.damage(10000.0, player);
-
                                     Player finalOpponent = opponent;
-                                    Object finalFight = fight;
+                                    Object finalFight    = fight;
                                     Bukkit.getScheduler().runTaskLater(plugin, () -> {
                                         try {
                                             if (plugin.isInFight(finalOpponent) && plugin.getMHandleDeath() != null) {
                                                 plugin.getMHandleDeath().invoke(finalFight, finalOpponent);
                                             }
-                                        } catch (Exception e) {}
+                                        } catch (Exception ignored) {}
                                     }, 2L);
-
-                                } else {
-                                    Object bestOf = plugin.getMGetBestOf().invoke(fight);
-                                    if (bestOf != null && plugin.getMHandleWin() != null) {
-                                        plugin.getMHandleWin().invoke(bestOf, player.getUniqueId());
-                                    }
                                 }
+
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
@@ -206,23 +278,35 @@ public class BedListener implements Listener {
                         }
 
                         if (otherHalf != null) {
-                            final Block finalOtherHalf = otherHalf;
-                            processedBedHalves.add(finalOtherHalf.getLocation());
+                            processedBedHalves.add(otherHalf.getLocation());
+                            if (!event.isCancelled()) {
 
-                            new BukkitRunnable() {
-                                @Override
-                                public void run() {
-                                    BlockBreakEvent fakeEvent = new BlockBreakEvent(finalOtherHalf, player);
-                                    Bukkit.getPluginManager().callEvent(fakeEvent);
-
-                                    finalOtherHalf.setType(Material.AIR);
-
-                                    processedBedHalves.remove(finalOtherHalf.getLocation());
-                                }
-                            }.runTaskLater(plugin, 1L);
+                                BlockBreakEvent fakeEvent = new BlockBreakEvent(otherHalf, player);
+                                Bukkit.getPluginManager().callEvent(fakeEvent);
+                            }
+                            String ot = otherHalf.getType().name();
+                            if (ot.contains("BED_BLOCK") || ot.endsWith("_BED")) {
+                                otherHalf.setType(Material.AIR);
+                            }
+                            processedBedHalves.remove(otherHalf.getLocation());
                         }
 
-                        if (plugin.getClsAbstractFight() != null && plugin.getClsAbstractFight().isInstance(fight) && plugin.getFBed1Broken() != null && plugin.getFBed2Broken() != null) {
+                        if (event.isCancelled()) {
+
+                            String mt = bedBlock.getType().name();
+                            if (mt.contains("BED_BLOCK") || mt.endsWith("_BED")) {
+                                bedBlock.setType(Material.AIR);
+                            }
+                        }
+
+                        boolean isPartyFFAFight = plugin.partyFFAManager != null
+                                && plugin.partyFFAManager.isPartyFFA(fight);
+                        if (isPartyFFAFight) {
+
+                            plugin.partyFFAManager.handleBedBreak(bedBlock, fight);
+                        } else if (plugin.getClsAbstractFight() != null
+                                && plugin.getClsAbstractFight().isInstance(fight)
+                                && plugin.getFBed1Broken() != null && plugin.getFBed2Broken() != null) {
                             try {
                                 if (isP1Team) plugin.getFBed2Broken().set(fight, true);
                                 else plugin.getFBed1Broken().set(fight, true);

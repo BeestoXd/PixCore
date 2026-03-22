@@ -79,17 +79,6 @@ public class PartySplitManager implements Listener {
             Object fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player);
             if (fight == null || !isPartySplit(fight)) return;
 
-            final Object finalFight = fight;
-
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (!player.isOnline() || !plugin.isInFight(player)) return;
-                try {
-                    Object currentFight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player);
-                    if (!finalFight.equals(currentFight)) return;
-                } catch (Exception ignored) {}
-                plugin.applyStartKit(player, finalFight);
-            }, 2L);
-
         } catch (Exception ignored) {}
     }
 
@@ -238,10 +227,6 @@ public class PartySplitManager implements Listener {
         }
 
         event.setCancelled(true);
-        Location spawn = plugin.arenaSpawnLocations.get(player.getUniqueId());
-        if (spawn != null) {
-            player.teleport(faceToward(spawn, oppSpawnRef));
-        }
 
         long now = System.currentTimeMillis();
         if (portalCooldown.getOrDefault(player.getUniqueId(), 0L) > now) return;
@@ -285,9 +270,14 @@ public class PartySplitManager implements Listener {
             final int finalScore1 = scores[0];
             final int finalScore2 = scores[1];
 
+            final Location spectatorPos = (plugin.partyFFAManager != null)
+                    ? plugin.partyFFAManager.getCenterAt100(finalFight) : null;
             for (Player p : allFightPlayers) {
                 if (p == null || !p.isOnline()) continue;
-                plugin.frozenPlayers.add(p.getUniqueId());
+                plugin.frozenPlayers.remove(p.getUniqueId());
+                if (spectatorPos != null) p.teleport(spectatorPos);
+                if (plugin.partyFFAManager != null)
+                    plugin.partyFFAManager.applyCustomSpectator(p, allFightPlayers);
             }
 
             new BukkitRunnable() {
@@ -326,7 +316,7 @@ public class PartySplitManager implements Listener {
                     try { finalFight.getClass().getMethod("forceEnd", String.class).invoke(finalFight, ""); }
                     catch (Exception ignored) {}
                 }
-            }.runTaskLater(plugin, 60L);
+            }.runTaskLater(plugin, 12L);
 
         } else {
             for (Player p : allFightPlayers) {
@@ -344,6 +334,11 @@ public class PartySplitManager implements Listener {
                 }
             }
 
+            for (Player p : frozenList) {
+                if (p != null && p.isOnline())
+                    plugin.forceRestoreKitBlocks(p, finalFight);
+            }
+
             new BukkitRunnable() {
                 @Override public void run() {
                     for (Player p : frozenList) {
@@ -355,7 +350,6 @@ public class PartySplitManager implements Listener {
                         Location oppS = null;
                         for (Player o : opp) { oppS = plugin.arenaSpawnLocations.get(o.getUniqueId()); if (oppS != null) break; }
                         p.teleport(faceToward(s, oppS));
-                        plugin.applyStartKit(p, finalFight);
                     }
                 }
             }.runTaskLater(plugin, 5L);
@@ -369,18 +363,22 @@ public class PartySplitManager implements Listener {
             new BukkitRunnable() {
                 @Override public void run() {
                     for (Player p : players) {
-                        if (p != null && p.isOnline()) plugin.frozenPlayers.remove(p.getUniqueId());
+                        if (p == null || !p.isOnline()) continue;
+                        plugin.frozenPlayers.remove(p.getUniqueId());
+                        if (plugin.bridgeBlockResetManager != null)
+                            plugin.bridgeBlockResetManager.scheduleRestore(p, 2L, 5L, 10L);
                     }
                 }
             }.runTaskLater(plugin, 20L);
             return;
         }
 
-        final int maxSeconds = plugin.startCountdownDuration;
+        final int maxSeconds = 3;
         new BukkitRunnable() {
             int current = maxSeconds;
             @Override
             public void run() {
+                if (bridgeEndedFights.contains(fight)) { cancel(); return; }
                 try {
                     if ((boolean) fight.getClass().getMethod("hasEnded").invoke(fight)) { cancel(); return; }
                 } catch (Exception ignored) {}
@@ -396,6 +394,8 @@ public class PartySplitManager implements Listener {
                             p.playSound(p.getLocation(), plugin.startMatchSound,
                                     plugin.startCountdownVolume, plugin.startCountdownPitch);
                         plugin.frozenPlayers.remove(p.getUniqueId());
+                        if (plugin.bridgeBlockResetManager != null)
+                            plugin.bridgeBlockResetManager.scheduleRestore(p, 2L, 5L, 10L);
                     }
                     cancel();
                     return;

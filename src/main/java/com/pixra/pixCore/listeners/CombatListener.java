@@ -12,9 +12,12 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
@@ -53,6 +56,9 @@ public class CombatListener implements Listener {
             if (inFight) {
                 event.setDeathMessage(null);
                 event.getDrops().clear();
+
+                if (plugin.mlgRushBedDeaths.remove(uid)) return;
+
                 recordKill(player);
 
                 if (isPlayerBedBroken(player, fight)) return;
@@ -122,6 +128,12 @@ public class CombatListener implements Listener {
         if (player.getHealth() - event.getFinalDamage() <= 0) {
             try {
                 if (plugin.isInFight(player)) {
+
+                    if (plugin.mlgRushBedDeaths.remove(player.getUniqueId())) {
+                        event.setCancelled(true);
+                        return;
+                    }
+
                     recordKill(player);
                     Object fight = null;
                     try { fight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), player); } catch (Exception ignored) {}
@@ -146,6 +158,8 @@ public class CombatListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerMoveVoidCheck(PlayerMoveEvent event) {
         if (!plugin.isHooked() || plugin.activeCountdowns.containsKey(event.getPlayer().getUniqueId())) return;
+
+        if (plugin.frozenPlayers.contains(event.getPlayer().getUniqueId())) return;
         if (event.getTo().getBlockY() > plugin.voidYLimit) return;
 
         Player player = event.getPlayer();
@@ -188,11 +202,131 @@ public class CombatListener implements Listener {
         } catch (Exception e) {}
     }
 
+    @EventHandler(priority = EventPriority.LOW)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        UUID uid = player.getUniqueId();
+        plugin.clearPlayerJoinState(uid);
+
+        Location hub = plugin.resolveHubLocation(player);
+        if (hub == null) return;
+        plugin.hubOnJoinSpawn.put(uid, hub.clone());
+        final Location finalHub = hub.clone();
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!player.isOnline()) { plugin.hubOnJoinSpawn.remove(uid); return; }
+                try {
+                    Object api = plugin.getStrikePracticeAPI();
+                    if (api != null) {
+                        api.getClass().getMethod("clear", Player.class, boolean.class, boolean.class)
+                                .invoke(api, player, true, true);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }.runTaskLater(plugin, 1L);
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!player.isOnline()) return;
+                player.teleport(finalHub);
+            }
+        }.runTaskLater(plugin, 2L);
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!player.isOnline()) return;
+                player.teleport(finalHub);
+                plugin.hubOnJoinSpawn.remove(uid);
+            }
+        }.runTaskLater(plugin, 40L);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onTeleportDuringHubRedirect(PlayerTeleportEvent event) {
+        UUID uid = event.getPlayer().getUniqueId();
+        Location hub = plugin.hubOnJoinSpawn.get(uid);
+        if (hub == null) return;
+
+        Location dest = event.getTo();
+        if (dest != null && dest.getWorld() != null && dest.getWorld().equals(hub.getWorld())
+                && dest.distanceSquared(hub) < 1.0) return;
+        event.setTo(hub);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onLeaveMatchCommand(PlayerCommandPreprocessEvent event) {
+        if (!plugin.isHooked()) return;
+        String cmd = event.getMessage().toLowerCase();
+        if (!cmd.equals("/leavematch") && !cmd.equals("/strikepractice:leavematch") && !cmd.equals("/l")) return;
+
+        if (cmd.equals("/l")) {
+            cmd = "/leavematch";
+            event.setMessage("/leavematch");
+        }
+        Player player = event.getPlayer();
+        if (!plugin.isInFight(player)) {
+            return;
+        }
+
+        event.setCancelled(true);
+
+        UUID uid = player.getUniqueId();
+        plugin.leavingMatchPlayers.add(uid);
+        Location hub = null;
+        try {
+            Object api = plugin.getStrikePracticeAPI();
+            if (api != null) {
+                hub = (Location) api.getClass().getMethod("getSpawnLocation").invoke(api);
+            }
+        } catch (Exception ignored) {}
+        if (hub == null) hub = player.getWorld().getSpawnLocation();
+        plugin.hubOnJoinSpawn.put(uid, hub.clone());
+        final Location finalHub = hub.clone();
+
+        new BukkitRunnable() {
+            @Override public void run() {
+                if (!player.isOnline()) { plugin.hubOnJoinSpawn.remove(uid); return; }
+                try {
+                    Object api = plugin.getStrikePracticeAPI();
+                    Object fight = plugin.getMGetFight().invoke(api, player);
+                    if (fight != null && plugin.getMHandleDeath() != null) {
+                        plugin.getMHandleDeath().invoke(fight, player);
+                    } else if (api != null) {
+
+                        api.getClass().getMethod("clear", Player.class, boolean.class, boolean.class)
+                                .invoke(api, player, true, true);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }.runTaskLater(plugin, 1L);
+
+        new BukkitRunnable() {
+            @Override public void run() {
+                plugin.hubOnJoinSpawn.remove(uid);
+                if (!player.isOnline()) return;
+                player.teleport(finalHub);
+            }
+        }.runTaskLater(plugin, 40L);
+    }
+
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        plugin.cleanupPlayer(event.getPlayer().getUniqueId(), true);
+        Player player = event.getPlayer();
+        UUID uid = player.getUniqueId();
+
+        if (plugin.isHooked() && plugin.isInFight(player)) {
+            plugin.pendingHubOnJoin.add(uid);
+        }
+        plugin.cleanupPlayer(uid, true);
         if(plugin.blockReplenishManager != null) {
-            plugin.blockReplenishManager.clearPlayerData(event.getPlayer());
+            plugin.blockReplenishManager.clearPlayerData(player);
+        }
+        if (plugin.bridgeBlockResetManager != null) {
+            plugin.bridgeBlockResetManager.clearPlayerData(player);
         }
     }
 
@@ -200,6 +334,15 @@ public class CombatListener implements Listener {
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         plugin.cleanupPlayer(event.getPlayer().getUniqueId(), false);
         plugin.sendTitle(event.getPlayer(), "", "", 0, 0, 0);
+        if (plugin.hologramManager != null) {
+            final Player respawned = event.getPlayer();
+            new BukkitRunnable() {
+                @Override public void run() {
+                    if (respawned.isOnline())
+                        plugin.hologramManager.reHideAllFromPlayer(respawned);
+                }
+            }.runTaskLater(plugin, 2L);
+        }
     }
 
     private void handleDeathSequence(Player player, Object fight, boolean isVoid) {
@@ -238,8 +381,8 @@ public class CombatListener implements Listener {
                     player.setHealth(player.getMaxHealth());
                     player.setFallDistance(0);
                     player.setFoodLevel(20);
+                    plugin.activeCountdowns.remove(uid);
                     plugin.respawnManager.finishRespawn(player);
-                    new BukkitRunnable() { @Override public void run() { plugin.activeCountdowns.remove(uid); } }.runTaskLater(plugin, 20L);
                     cancel();
                     return;
                 }
@@ -263,6 +406,8 @@ public class CombatListener implements Listener {
 
     private void recordKill(Player victim) {
         UUID vUid = victim.getUniqueId();
+
+        if (plugin.mlgRushBedDeaths.remove(vUid)) return;
         if (plugin.killCountCooldown.containsKey(vUid) && System.currentTimeMillis() - plugin.killCountCooldown.get(vUid) < 2000) return;
         plugin.killCountCooldown.put(vUid, System.currentTimeMillis());
 
@@ -286,22 +431,21 @@ public class CombatListener implements Listener {
         }
     }
 
-    private void playDeathSoundNow(Player player, Object fight) {
+    private void playDeathSoundNow(Player victim, Object fight) {
         if (!plugin.soundEnabled || plugin.respawnSound == null) return;
-        try { player.playSound(player.getLocation(), plugin.respawnSound, 1.0f, 1.0f); } catch (Exception ignored) {}
 
-        if (plugin.isHooked() && plugin.getStrikePracticeAPI() != null && fight != null) {
-            try {
-                for (Player p : Bukkit.getOnlinePlayers()) {
-                    if (p.getUniqueId().equals(player.getUniqueId())) continue;
-                    if (plugin.isInFight(p)) {
-                        Object pFight = plugin.getMGetFight().invoke(plugin.getStrikePracticeAPI(), p);
-                        if (pFight != null && pFight.equals(fight)) {
-                            p.playSound(p.getLocation(), plugin.respawnSound, 1.0f, 1.0f);
-                        }
-                    }
-                }
-            } catch (Exception e) {}
+        Player killer = victim.getKiller();
+        if (killer == null) {
+            UUID killerUUID = plugin.lastDamager.get(victim.getUniqueId());
+            Long time = plugin.lastDamageTime.get(victim.getUniqueId());
+            if (killerUUID != null && time != null && (System.currentTimeMillis() - time) < 10000) {
+                killer = Bukkit.getPlayer(killerUUID);
+            }
+        }
+        if (killer != null && killer.getUniqueId().equals(victim.getUniqueId())) killer = null;
+
+        if (killer != null) {
+            try { killer.playSound(killer.getLocation(), plugin.respawnSound, 1.0f, 1.0f); } catch (Exception ignored) {}
         }
     }
 
@@ -324,10 +468,19 @@ public class CombatListener implements Listener {
         }
 
         String vColor = plugin.getTeamColorCode(victim, fight);
+        if (plugin.partyFFAManager != null && fight != null && plugin.partyFFAManager.isPartyFFA(fight)) {
+            String ffaCode = plugin.partyFFAManager.getFfaColorCode(victim);
+            if (ffaCode != null) vColor = ffaCode;
+        }
         if (!vColor.equals("§c") && !vColor.equals("§9")) return;
 
         String victimName = vColor + victim.getName();
-        String killerName = (killer != null) ? plugin.getTeamColorCode(killer, fight) + killer.getName() : "";
+        String kColor = (killer != null) ? plugin.getTeamColorCode(killer, fight) : "";
+        if (killer != null && plugin.partyFFAManager != null && fight != null && plugin.partyFFAManager.isPartyFFA(fight)) {
+            String ffaCode = plugin.partyFFAManager.getFfaColorCode(killer);
+            if (ffaCode != null) kColor = ffaCode;
+        }
+        String killerName = (killer != null) ? kColor + killer.getName() : "";
 
         if (isVoid) msg = killer != null ? plugin.getMsg("death-void-kill").replace("<victim>", victimName).replace("<killer>", killerName) : plugin.getMsg("death-void-self").replace("<victim>", victimName);
         else {
@@ -361,7 +514,13 @@ public class CombatListener implements Listener {
 
     @SuppressWarnings("unchecked")
     private boolean isPlayerBedBroken(Player player, Object fight) {
-        if (fight == null || plugin.getMIsBed1Broken() == null || plugin.getMIsBed2Broken() == null) return false;
+        if (fight == null) return false;
+
+        if (plugin.partyFFAManager != null && plugin.partyFFAManager.isPartyFFA(fight)) {
+            return plugin.partyFFAManager.isBedBroken(player);
+        }
+
+        if (plugin.getMIsBed1Broken() == null || plugin.getMIsBed2Broken() == null) return false;
 
         if (plugin.partySplitManager != null && plugin.partySplitManager.isPartySplit(fight)) {
             return plugin.partySplitManager.isBedBroken(player, fight);

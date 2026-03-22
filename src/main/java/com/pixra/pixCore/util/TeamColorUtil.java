@@ -211,7 +211,7 @@ public class TeamColorUtil {
     }
 
     public void colorItem(ItemStack item, Color color) {
-        if (item == null || item.getType() == org.bukkit.Material.AIR) return;
+        if (item == null || item.getType() == org.bukkit.Material.AIR || color == null) return;
         String name = item.getType().name();
         if (name.contains("LEATHER_")) {
             LeatherArmorMeta meta = (LeatherArmorMeta) item.getItemMeta();
@@ -219,8 +219,21 @@ public class TeamColorUtil {
             item.setItemMeta(meta);
         } else if (name.equals("WOOL") || name.equals("STAINED_CLAY")
                 || name.equals("STAINED_GLASS") || name.equals("CARPET")) {
-            item.setDurability(color == Color.BLUE ? (byte) 11 : (byte) 14);
+            Byte data = legacyColorData(color);
+            if (data != null) item.setDurability(data);
         }
+    }
+
+    private Byte legacyColorData(Color color) {
+        if (isSimilarColor(color, Color.WHITE))  return (byte) 0;
+        if (isSimilarColor(color, Color.ORANGE)) return (byte) 1;
+        if (isSimilarColor(color, Color.AQUA))   return (byte) 3;
+        if (isSimilarColor(color, Color.YELLOW)) return (byte) 4;
+        if (isSimilarColor(color, Color.LIME))   return (byte) 5;
+        if (isSimilarColor(color, Color.PURPLE)) return (byte) 10;
+        if (isSimilarColor(color, Color.BLUE))   return (byte) 11;
+        if (isSimilarColor(color, Color.RED))    return (byte) 14;
+        return null;
     }
 
     public boolean isItemMatch(ItemStack target, ItemStack poolItem) {

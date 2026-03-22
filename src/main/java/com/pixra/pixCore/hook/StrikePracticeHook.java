@@ -26,7 +26,10 @@ public class StrikePracticeHook {
     private Method mGetArena;
     private Method mArenaGetMin;
     private Method mArenaGetMax;
+    private Method mArenaGetSpawn1;
+    private Method mArenaGetSpawn2;
     private Method mHandleDeath;
+    private Method mGetBlockChanges;
 
     private Method mAddSpectator;
     private Method mRemoveSpectator;
@@ -82,6 +85,9 @@ public class StrikePracticeHook {
             Class<?> fightClass = Class.forName("ga.strikepractice.fights.Fight");
             this.mGetOpponents = fightClass.getMethod("getOpponents", Player.class);
             try { this.mHandleDeath        = fightClass.getMethod("handleDeath", Player.class); }         catch (Exception ignored) {}
+            for (String n : new String[]{"getBlockChanges", "getChangedBlocks", "getBlockCache"}) {
+                try { this.mGetBlockChanges = fightClass.getMethod(n); break; } catch (Exception ignored) {}
+            }
             try { this.mGetTeammates       = fightClass.getMethod("getTeammates", Player.class); }        catch (Exception ignored) {}
             try { this.mPlayersAreTeammates  = fightClass.getMethod("playersAreTeammates", Player.class, Player.class); } catch (Exception ignored) {}
             try { this.mPlayersAreOpponents  = fightClass.getMethod("playersAreOpponents", Player.class, Player.class); } catch (Exception ignored) {}
@@ -100,9 +106,11 @@ public class StrikePracticeHook {
             }
 
             try {
-                Class<?> arenaClass  = Class.forName("ga.strikepractice.fights.arena.Arena");
-                this.mArenaGetMin    = arenaClass.getMethod("getMin");
-                this.mArenaGetMax    = arenaClass.getMethod("getMax");
+                Class<?> arenaClass  = Class.forName("ga.strikepractice.arena.Arena");
+                this.mArenaGetMin    = arenaClass.getMethod("getCorner1");
+                this.mArenaGetMax    = arenaClass.getMethod("getCorner2");
+                try { this.mArenaGetSpawn1 = arenaClass.getMethod("getSpawn1"); } catch (Exception ignored) {}
+                try { this.mArenaGetSpawn2 = arenaClass.getMethod("getSpawn2"); } catch (Exception ignored) {}
                 this.arenaReflectionLoaded = true;
             } catch (Exception e) {
                 this.arenaReflectionLoaded = false;
@@ -199,6 +207,8 @@ public class StrikePracticeHook {
     public Method getMGetArena()             { return mGetArena; }
     public Method getMArenaGetMin()          { return mArenaGetMin; }
     public Method getMArenaGetMax()          { return mArenaGetMax; }
+    public Method getMArenaGetSpawn1()       { return mArenaGetSpawn1; }
+    public Method getMArenaGetSpawn2()       { return mArenaGetSpawn2; }
     public Method getMIsBed1Broken()         { return mIsBed1Broken; }
     public Method getMIsBed2Broken()         { return mIsBed2Broken; }
     public Method getMSetBedwars()           { return mSetBedwars; }
@@ -214,4 +224,5 @@ public class StrikePracticeHook {
     public Field getFBed2Broken()          { return fBed2Broken; }
 
     public Method getMGetLastSelectedEditedKit() { return mGetLastSelectedEditedKit; }
+    public Method getMGetBlockChanges()          { return mGetBlockChanges; }
 }

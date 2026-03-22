@@ -16,12 +16,14 @@ public class BedRestoreManager {
         public final Location headLoc;
         public final byte     footData;
         public final byte     headData;
+        public final org.bukkit.Material material;
 
-        public BedPair(Location footLoc, Location headLoc, byte footData, byte headData) {
+        public BedPair(Location footLoc, Location headLoc, byte footData, byte headData, org.bukkit.Material material) {
             this.footLoc  = footLoc;
             this.headLoc  = headLoc;
             this.footData = footData;
             this.headData = headData;
+            this.material = material;
         }
     }
 
@@ -56,14 +58,14 @@ public class BedRestoreManager {
                 byte     footData = (byte) customBedsConfig.getInt(path + ".footData");
                 byte     headData = (byte) customBedsConfig.getInt(path + ".headData");
                 if (footLoc != null && headLoc != null) {
-                    persistentBeds.add(new BedPair(footLoc, headLoc, footData, headData));
+                    persistentBeds.add(new BedPair(footLoc, headLoc, footData, headData, null));
                 }
             }
         }
     }
 
     public void saveCustomBed(Location footLoc, Location headLoc, byte footData, byte headData) {
-        BedPair bed  = new BedPair(footLoc, headLoc, footData, headData);
+        BedPair bed  = new BedPair(footLoc, headLoc, footData, headData, null);
         persistentBeds.add(bed);
 
         String path  = "beds." + UUID.randomUUID();
@@ -123,7 +125,7 @@ public class BedRestoreManager {
 
                     String key = footLoc.toString();
                     if (!bedMap.containsKey(key)) {
-                        bedMap.put(key, new BedPair(footLoc, headLoc, (byte) dir, (byte) (dir | 8)));
+                        bedMap.put(key, new BedPair(footLoc, headLoc, (byte) dir, (byte) (dir | 8), b.getType()));
                     }
                 }
             }
@@ -177,7 +179,7 @@ public class BedRestoreManager {
         }
 
         for (BedPair bed : bedsToRestore) {
-            placeBedRobust(bed.footLoc, bed.headLoc, bed.footData, bed.headData);
+            placeBedRobust(bed.footLoc, bed.headLoc, bed.footData, bed.headData, bed.material);
         }
 
         if (fight != null && plugin.getClsAbstractFight() != null
@@ -198,7 +200,7 @@ public class BedRestoreManager {
     }
 
     private void placeBedRobust(Location footLoc, Location headLoc,
-                                byte footData, byte headData) {
+                                byte footData, byte headData, org.bukkit.Material bedMaterial) {
         try {
             if (!footLoc.getChunk().isLoaded()) footLoc.getChunk().load();
             if (!headLoc.getChunk().isLoaded()) headLoc.getChunk().load();
@@ -206,43 +208,58 @@ public class BedRestoreManager {
             Block foot = footLoc.getBlock();
             Block head = headLoc.getBlock();
 
-            org.bukkit.Material bedMat;
-            try {
-                bedMat = org.bukkit.Material.valueOf("BED_BLOCK");
-            } catch (Exception e) {
-                return;
+            org.bukkit.Material legacyBedMat = null;
+            try { legacyBedMat = org.bukkit.Material.valueOf("BED_BLOCK"); } catch (Exception ignored) {}
+
+            if (legacyBedMat != null) {
+                try {
+                    Method setTID = Block.class.getMethod("setTypeIdAndData", int.class, byte.class, boolean.class);
+                    Method getId  = org.bukkit.Material.class.getMethod("getId");
+                    int    bedId  = (Integer) getId.invoke(legacyBedMat);
+                    setTID.invoke(foot, 0, (byte) 0, false);
+                    setTID.invoke(head, 0, (byte) 0, false);
+                    setTID.invoke(foot, bedId, footData, false);
+                    setTID.invoke(head, bedId, headData, false);
+                    return;
+                } catch (Exception ignored) {}
             }
 
-            try {
-                Method setTID = Block.class.getMethod("setTypeIdAndData", int.class, byte.class, boolean.class);
-                Method getId  = org.bukkit.Material.class.getMethod("getId");
-                int    bedId  = (Integer) getId.invoke(bedMat);
+            org.bukkit.Material mat = bedMaterial;
+            if (mat == null || !mat.name().endsWith("_BED")) {
+                try { mat = org.bukkit.Material.valueOf("WHITE_BED"); } catch (Exception ignored) {}
+            }
+            if (mat == null) return;
 
-                setTID.invoke(foot, 0, (byte) 0, false);
-                setTID.invoke(head, 0, (byte) 0, false);
-                setTID.invoke(foot, bedId, footData, false);
-                setTID.invoke(head, bedId, headData, false);
-                return;
+            foot.setType(org.bukkit.Material.AIR, false);
+            head.setType(org.bukkit.Material.AIR, false);
+            foot.setType(mat, false);
+            head.setType(mat, false);
+
+            try {
+                org.bukkit.block.data.BlockData footBD = foot.getBlockData();
+                org.bukkit.block.data.BlockData headBD = head.getBlockData();
+                Class<?> bedDataClass = Class.forName("org.bukkit.block.data.type.Bed");
+                if (bedDataClass.isInstance(footBD) && bedDataClass.isInstance(headBD)) {
+                    org.bukkit.block.BlockFace[] facingMap = {
+                        org.bukkit.block.BlockFace.SOUTH,
+                        org.bukkit.block.BlockFace.WEST,
+                        org.bukkit.block.BlockFace.NORTH,
+                        org.bukkit.block.BlockFace.EAST
+                    };
+                    org.bukkit.block.BlockFace facing = facingMap[footData & 3];
+                    Method setFacing = bedDataClass.getMethod("setFacing", org.bukkit.block.BlockFace.class);
+                    setFacing.invoke(footBD, facing);
+                    setFacing.invoke(headBD, facing);
+                    Class<?> partEnum = Class.forName("org.bukkit.block.data.type.Bed$Part");
+                    Object footPart = java.lang.Enum.valueOf((Class<? extends Enum>) partEnum, "FOOT");
+                    Object headPart = java.lang.Enum.valueOf((Class<? extends Enum>) partEnum, "HEAD");
+                    Method setPart = bedDataClass.getMethod("setPart", partEnum);
+                    setPart.invoke(footBD, footPart);
+                    setPart.invoke(headBD, headPart);
+                    foot.setBlockData(footBD, false);
+                    head.setBlockData(headBD, false);
+                }
             } catch (Exception ignored) {}
-
-            foot.setType(org.bukkit.Material.AIR);
-            head.setType(org.bukkit.Material.AIR);
-
-            org.bukkit.block.BlockState footState = foot.getState();
-            org.bukkit.block.BlockState headState = head.getState();
-            footState.setType(bedMat);
-            headState.setType(bedMat);
-
-            try {
-                Method setRaw = org.bukkit.block.BlockState.class.getMethod("setRawData", byte.class);
-                setRaw.invoke(footState, footData);
-                setRaw.invoke(headState, headData);
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
-
-            footState.update(true, false);
-            headState.update(true, false);
 
         } catch (Exception e) {
             e.printStackTrace();

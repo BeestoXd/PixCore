@@ -16,8 +16,22 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
 
     private final PixCore plugin;
 
-    private static final String CIRCLE_FILLED = "█";
-    private static final String CIRCLE_EMPTY  = "░";
+    private static final String CIRCLE_FILLED = "⬤";
+    private static final String CIRCLE_EMPTY  = "⬤";
+
+    private static final String[] TITLE_FRAMES = {
+        "&f&lP&a&lRACTICE",
+        "&e&lP&f&lR&a&lACTICE",
+        "&a&lP&e&lR&f&lA&a&lCTICE",
+        "&a&lPR&e&lA&f&lC&a&lTICE",
+        "&a&lPRA&e&lC&f&lT&a&lICE",
+        "&a&lPRAC&e&lT&f&lI&a&lCE",
+        "&a&lPRACT&e&lI&f&lC&a&lE",
+        "&a&lPRACTI&e&lC&f&lE",
+        "&a&lPRACTICE",
+        "&a&lPRACTICE",
+        "&a&lPRACTICE"
+    };
 
     public PixCorePlaceholders(PixCore plugin) {
         this.plugin = plugin;
@@ -88,8 +102,10 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
 
     private String circles(int scored, int total, String color) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < total; i++)
-            sb.append(i < scored ? color + CIRCLE_FILLED : "§8" + CIRCLE_EMPTY);
+        for (int i = 0; i < total; i++) {
+            if (i < scored) sb.append(color).append(CIRCLE_FILLED);
+            else            sb.append("&7").append(CIRCLE_EMPTY);
+        }
         return sb.toString();
     }
 
@@ -156,8 +172,8 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
     private List<String> buildBedwars(Player p, Object fight, Player p1) {
         List<String> lines = new ArrayList<>();
         boolean playerIsBlue = p.getUniqueId().equals(p1.getUniqueId()) || areTeammates(fight, p1, p);
-        String blueYou = playerIsBlue ? " §7(You)" : "";
-        String redYou  = playerIsBlue ? "" : " §7(You)";
+        String blueYou = playerIsBlue ? " §7YOU" : "";
+        String redYou  = playerIsBlue ? "" : " §7YOU";
         lines.add("§9B §fBlue: " + bedStatus(fight, true,  p1) + blueYou);
         lines.add("§cR §fRed: "  + bedStatus(fight, false, p1) + redYou);
         lines.add("");
@@ -167,34 +183,53 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
         return lines;
     }
 
-    private List<String> buildBestof(Player p, Object fight, Player p1) {
+    private List<String> buildBestof(Player p, Object fight, Player p1, String kitName) {
         List<String> lines = new ArrayList<>();
-        int rounds = 3, myScore = 0, oppScore = 0;
+        int rounds = 3, p1Score = 0, p2Score = 0;
         try {
             Object bestOf = fight.getClass().getMethod("getBestOf").invoke(fight);
             if (bestOf != null) {
-                rounds = (int) bestOf.getClass().getMethod("getRounds").invoke(bestOf);
+                int r = (int) bestOf.getClass().getMethod("getRounds").invoke(bestOf);
+                if (r > 0) rounds = r;
                 @SuppressWarnings("unchecked")
                 Map<UUID, Integer> won = (Map<UUID, Integer>) bestOf.getClass().getMethod("getRoundsWon").invoke(bestOf);
                 if (won != null)
                     for (Map.Entry<UUID, Integer> e : won.entrySet()) {
-                        if (e.getKey().equals(p.getUniqueId())) myScore  = e.getValue();
-                        else                                      oppScore = e.getValue();
+                        if (e.getKey().equals(p1.getUniqueId())) p1Score = e.getValue();
+                        else                                      p2Score = e.getValue();
                     }
             }
         } catch (Exception ignored) {}
 
-        boolean isT1 = p1 != null && p.getUniqueId().equals(p1.getUniqueId());
-        String myC  = isT1 ? "§9" : "§c";
-        String oppC = isT1 ? "§c" : "§9";
+        boolean isStickfight = kitName != null && kitName.contains("stickfight");
 
-        lines.add("§fYou:   " + circles(myScore,  rounds, myC));
-        lines.add("§fThem:  " + circles(oppScore, rounds, oppC));
-        lines.add("");
-        lines.add("§fGoals: §a" + myScore);
-        lines.add("§fKills: §a" + plugin.playerMatchKills.getOrDefault(p.getUniqueId(), 0));
-        lines.add("");
-        lines.add("§fPing: §7" + getPing(p) + "ms");
+        if (isStickfight) {
+            int limit = rounds;
+            if (plugin.bestofConfig != null) {
+                org.bukkit.configuration.ConfigurationSection sec =
+                        plugin.bestofConfig.getConfigurationSection(kitName);
+                if (sec != null) limit = sec.getInt("score-limit", rounds);
+            }
+            String p2Name = "?";
+            try {
+                if (plugin.getMGetPlayersInFight() != null) {
+                    @SuppressWarnings("unchecked")
+                    List<Player> fightPlayers = (List<Player>) plugin.getMGetPlayersInFight().invoke(fight);
+                    if (fightPlayers != null)
+                        for (Player pl : fightPlayers)
+                            if (!pl.getUniqueId().equals(p1.getUniqueId())) { p2Name = pl.getName(); break; }
+                }
+            } catch (Exception ignored) {}
+            lines.add("§fWins:");
+            lines.add("§f " + p1.getName() + "§7: §a" + p1Score + "/" + limit);
+            lines.add("§f " + p2Name + "§7: §a" + p2Score + "/" + limit);
+        } else {
+            int displayRounds = (rounds + 1) / 2;
+            lines.add("&9[B] " + circles(p1Score, displayRounds, "&9"));
+            lines.add("&c[R] " + circles(p2Score, displayRounds, "&c"));
+            lines.add("");
+            lines.add("§fKills: §a" + plugin.playerMatchKills.getOrDefault(p.getUniqueId(), 0));
+        }
         return lines;
     }
 
@@ -216,8 +251,8 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
         String red  = bed2Broken ? (alive2 > 0 ? "§c" + alive2 : "§c✘") : "§a✔";
 
         boolean playerIsBlue = isPartyTeam1(p, fight);
-        String blueYou = playerIsBlue ? " §7(You)" : "";
-        String redYou  = playerIsBlue ? "" : " §7(You)";
+        String blueYou = playerIsBlue ? " §7YOU" : "";
+        String redYou  = playerIsBlue ? "" : " §7YOU";
         List<String> lines = new ArrayList<>();
         lines.add("§9B §fBlue: " + blue + blueYou);
         lines.add("§cR §fRed: "  + red  + redYou);
@@ -241,7 +276,12 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
         lines.add("§fYou:  " + circles(myScore,  limit, myC));
         lines.add("§fThem: " + circles(oppScore, limit, oppC));
         lines.add("");
-        lines.add("§fGoals: §a" + myScore);
+        String timeLeftBr = (plugin.matchDurationManager != null) ? plugin.matchDurationManager.getTimeLeft(fight) : "";
+        if (!timeLeftBr.isEmpty()) {
+            lines.add("§fTime Left: §a" + timeLeftBr);
+        } else {
+            lines.add("§fGoals: §a" + myScore);
+        }
         lines.add("§fKills: §a" + plugin.playerMatchKills.getOrDefault(p.getUniqueId(), 0));
         lines.add("");
         lines.add("§fPing: §7" + getPing(p) + "ms");
@@ -250,6 +290,11 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
 
     private List<String> buildPartyGeneric(Player p, Object fight) {
         List<String> lines = new ArrayList<>();
+        String timeLeftG = (plugin.matchDurationManager != null) ? plugin.matchDurationManager.getTimeLeft(fight) : "";
+        if (!timeLeftG.isEmpty()) {
+            lines.add("§fTime Left: §a" + timeLeftG);
+            lines.add("");
+        }
         lines.add("§fKills: §a" + plugin.playerMatchKills.getOrDefault(p.getUniqueId(), 0));
         lines.add("");
         lines.add("§fPing: §7" + getPing(p) + "ms");
@@ -258,6 +303,12 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
 
     @Override
     public String onPlaceholderRequest(Player player, String identifier) {
+
+        if (identifier.equalsIgnoreCase("title")) {
+            int frame = (int) ((System.currentTimeMillis() / 1000L) % TITLE_FRAMES.length);
+            return ChatColor.translateAlternateColorCodes('&', TITLE_FRAMES[frame]);
+        }
+
         if (player == null || !plugin.isHooked()) return "";
 
         if (identifier.equalsIgnoreCase("highest_winstreak"))
@@ -304,6 +355,8 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
                 else               lines = buildPartyGeneric(player, fight);
             } else if (isBedwars && p1 != null) {
                 lines = buildBedwars(player, fight, p1);
+            } else if (isBestOf && p1 != null) {
+                lines = buildBestof(player, fight, p1, kitName);
             } else {
                 lines = new ArrayList<>();
             }
@@ -345,6 +398,16 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
         if (identifier.equalsIgnoreCase("ping"))
             return getPing(player) + "ms";
 
+        if (identifier.equalsIgnoreCase("time_left")) {
+            if (fight == null || plugin.matchDurationManager == null) return "";
+            return plugin.matchDurationManager.getTimeLeft(fight);
+        }
+
+        if (identifier.equalsIgnoreCase("is_ending_soon")) {
+            if (fight == null || plugin.matchDurationManager == null) return "false";
+            return plugin.matchDurationManager.isEndingSoon(fight) ? "true" : "false";
+        }
+
         if (identifier.equalsIgnoreCase("party_team")) {
             if (fight == null || !isParty) return "";
             return isPartyTeam1(player, fight) ? "§9Blue" : "§cRed";
@@ -371,13 +434,38 @@ public class PixCorePlaceholders extends PlaceholderExpansion {
             if (fight == null || !isParty) return "";
             boolean t1 = isPartyTeam1(player, fight); int[] sc = partyBridgeScores(fight);
             int lim = plugin.getConfig().getInt("settings.bridge-party-score-limit", 5);
-            return circles(t1 ? sc[0] : sc[1], lim, t1 ? "§9" : "§c");
+            return ChatColor.translateAlternateColorCodes('&', circles(t1 ? sc[0] : sc[1], lim, t1 ? "§9" : "§c"));
         }
         if (identifier.equalsIgnoreCase("party_circles_enemy")) {
             if (fight == null || !isParty) return "";
             boolean t1 = isPartyTeam1(player, fight); int[] sc = partyBridgeScores(fight);
             int lim = plugin.getConfig().getInt("settings.bridge-party-score-limit", 5);
-            return circles(t1 ? sc[1] : sc[0], lim, t1 ? "§c" : "§9");
+            return ChatColor.translateAlternateColorCodes('&', circles(t1 ? sc[1] : sc[0], lim, t1 ? "§c" : "§9"));
+        }
+
+        if (identifier.equalsIgnoreCase("duel_circles_blue") || identifier.equalsIgnoreCase("duel_circles_red")) {
+            if (fight == null || p1 == null || isParty || !isBestOf) return "[display=<ended>]";
+            boolean wantBlue = identifier.equalsIgnoreCase("duel_circles_blue");
+            int rounds = 3, p1Score = 0, p2Score = 0;
+            try {
+                Object bestOf = fight.getClass().getMethod("getBestOf").invoke(fight);
+                if (bestOf != null) {
+                    int r = (int) bestOf.getClass().getMethod("getRounds").invoke(bestOf);
+                    if (r > 0) rounds = r;
+                    @SuppressWarnings("unchecked")
+                    Map<UUID, Integer> won = (Map<UUID, Integer>) bestOf.getClass().getMethod("getRoundsWon").invoke(bestOf);
+                    if (won != null)
+                        for (Map.Entry<UUID, Integer> e : won.entrySet()) {
+                            if (e.getKey().equals(p1.getUniqueId())) p1Score = e.getValue();
+                            else                                      p2Score = e.getValue();
+                        }
+                }
+            } catch (Exception ignored) {}
+            int displayRounds = (rounds + 1) / 2;
+            int score    = wantBlue ? p1Score : p2Score;
+            String color = wantBlue ? "&9" : "&c";
+            String label = wantBlue ? "&9[B] " : "&c[R] ";
+            return ChatColor.translateAlternateColorCodes('&', label + circles(score, displayRounds, color) + "&r");
         }
 
         if (fight != null && p1 != null && (identifier.startsWith("bed_blue") || identifier.startsWith("bed_red"))) {

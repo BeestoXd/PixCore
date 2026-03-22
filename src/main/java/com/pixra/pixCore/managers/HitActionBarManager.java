@@ -83,7 +83,7 @@ public class HitActionBarManager implements Listener {
             try {
                 absorption = victim.getAbsorptionAmount();
             } catch (NoSuchMethodError e) {
-                // Ignore for older versions
+
             }
 
             String heartSymbol = config.getString("heart-symbol", "❤");
@@ -124,11 +124,8 @@ public class HitActionBarManager implements Listener {
 
             String format = config.getString("message", "<player> &r<health_bar>");
 
-            // --- BAGIAN YANG DIUBAH ---
-            // Mengambil warna kustom dari konfigurasi (default &e / kuning jika tidak diatur)
             String nameColor = config.getString("player-name-color", "&e");
             String victimName = nameColor + victim.getName();
-            // --------------------------
 
             String msg = format.replace("<player>", victimName)
                     .replace("<health_bar>", healthBar.toString())

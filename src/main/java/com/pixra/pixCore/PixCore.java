@@ -7,8 +7,9 @@ import com.pixra.pixCore.duels.DuelScoreManager;
 import com.pixra.pixCore.hook.StrikePracticeHook;
 import com.pixra.pixCore.listeners.*;
 import com.pixra.pixCore.managers.*;
-import com.pixra.pixCore.knockback.MLGRushKnockback;
+import com.pixra.pixCore.managers.MatchDurationManager;
 import com.pixra.pixCore.party.PartySplitManager;
+import com.pixra.pixCore.party.PartyFFAManager;
 import com.pixra.pixCore.party.PartyVsPartyManager;
 import com.pixra.pixCore.placeholders.PixCorePlaceholders;
 import com.pixra.pixCore.respawn.RespawnManager;
@@ -17,6 +18,7 @@ import com.pixra.pixCore.commands.PixCommand;
 import com.pixra.pixCore.util.SoundUtil;
 import com.pixra.pixCore.util.TeamColorUtil;
 import com.pixra.pixCore.util.TitleUtil;
+import me.clip.placeholderapi.PlaceholderAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Color;
@@ -27,6 +29,9 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -46,9 +51,6 @@ public class PixCore extends JavaPlugin {
 
     public int     voidYLimit;
     public boolean buildRestrictionsEnabled;
-    public int     maxBuildY;
-    public boolean checkArenaBorders;
-    public List<String> buildRestrictionKits;
     public List<String> roundEndKits;
     public List<String> bowCooldownKits;
     public List<String> deathDisabledKits;
@@ -62,6 +64,14 @@ public class PixCore extends JavaPlugin {
 
     private File              noFallDamageFile;
     private FileConfiguration noFallDamageConfig;
+
+    private File              arrowGiveFile;
+    private FileConfiguration arrowGiveConfig;
+
+    public File              bestofFile;
+    public FileConfiguration bestofConfig;
+    public boolean            bowAutoGiveArrowEnabled;
+    public List<String>       bowAutoGiveArrowKits;
 
     public boolean bowCooldownEnabled;
     public int     bowCooldownSeconds;
@@ -100,10 +110,12 @@ public class PixCore extends JavaPlugin {
     public ArenaBoundaryManager   arenaBoundaryManager;
     private BlockDisappearManager  blockDisappearManager;
     private HitRewardManager       hitRewardManager;
-    public CustomKnockbackManager  customKnockbackManager;
     private SnowballManager        snowballManager;
-    private TntMechanicsManager    tntMechanicsManager;
+    public TntMechanicsManager       tntMechanicsManager;
+    public FireballKnockbackManager  fireballKnockbackManager;
+    public FireballCooldownManager   fireballCooldownManager;
     public BlockReplenishManager   blockReplenishManager;
+    public BridgeBlockResetManager bridgeBlockResetManager;
     private ItemMechanicsManager   itemMechanicsManager;
     private NoFallDamageManager    noFallDamageManager;
     public BowHitMessageManager    bowHitMessageManager;
@@ -111,15 +123,27 @@ public class PixCore extends JavaPlugin {
     public StickFightManager       stickFightManager;
     private KillMessageManager     killMessageManager;
     public HitActionBarManager     hitActionBarManager;
-    public MLGRushKnockback        mlgrushKnockback;
     public PartySplitManager       partySplitManager;
+    public PartyFFAManager         partyFFAManager;
     public PartyVsPartyManager     partyVsPartyManager;
     public DuelScoreManager        duelScoreManager;
     public LeaderboardManager      leaderboardManager;
     public HologramManager         hologramManager;
     public LeaderboardGUIManager   leaderboardGUIManager;
+    public VoidManager             voidManager;
+    public ScoreboardTitleAnimator scoreboardTitleAnimator;
+    public MatchDurationManager    matchDurationManager;
+
+    public final Set<Object>             drawFights              = new HashSet<>();
+
+    public final Map<String, String>     prefixCache             = new HashMap<>();
+    public final Map<String, String>     tagCache                = new HashMap<>();
 
     public final Set<UUID>               frozenPlayers           = new HashSet<>();
+    public final Set<UUID>               roundTransitionPlayers  = new HashSet<>();
+    public final Set<UUID>               activeStartCountdownPlayers = new HashSet<>();
+    public final Set<UUID>               pendingHubOnJoin            = new HashSet<>();
+    public final Map<UUID, Location>     hubOnJoinSpawn              = new HashMap<>();
     public       boolean                 isCountdownRunning      = false;
     public final Map<UUID, Long>         bowCooldowns            = new HashMap<>();
     public final Set<UUID>               titleCooldown           = new HashSet<>();
@@ -135,8 +159,11 @@ public class PixCore extends JavaPlugin {
     public final Map<UUID, String>       playerMatchResults      = new HashMap<>();
     public final Map<UUID, Integer>      playerMatchKills        = new HashMap<>();
     public final Map<UUID, Long>         killCountCooldown       = new HashMap<>();
+
+    public final Set<UUID>               mlgRushBedDeaths        = new HashSet<>();
     public final Map<Object, Map<UUID, Integer>> matchScores     = new HashMap<>();
     public final Set<UUID>               recentPartyEndedPlayers = new HashSet<>();
+    public final Set<UUID>               leavingMatchPlayers     = new HashSet<>();
 
     @Override
     public void onEnable() {
@@ -144,10 +171,12 @@ public class PixCore extends JavaPlugin {
         this.respawnManager          = new RespawnManager(this);
         this.blockDisappearManager   = new BlockDisappearManager(this);
         this.hitRewardManager        = new HitRewardManager(this);
-        this.customKnockbackManager  = new CustomKnockbackManager(this);
         this.snowballManager         = new SnowballManager(this);
-        this.tntMechanicsManager     = new TntMechanicsManager(this);
+        this.tntMechanicsManager        = new TntMechanicsManager(this);
+        this.fireballKnockbackManager   = new FireballKnockbackManager(this);
+        this.fireballCooldownManager    = new FireballCooldownManager(this);
         this.blockReplenishManager   = new BlockReplenishManager(this);
+        this.bridgeBlockResetManager = new BridgeBlockResetManager(this);
         this.itemMechanicsManager    = new ItemMechanicsManager(this);
         this.noFallDamageManager     = new NoFallDamageManager(this);
         this.bowHitMessageManager    = new BowHitMessageManager(this);
@@ -155,12 +184,16 @@ public class PixCore extends JavaPlugin {
         this.stickFightManager       = new StickFightManager(this);
         this.killMessageManager      = new KillMessageManager(this);
         this.hitActionBarManager     = new HitActionBarManager(this);
-        this.mlgrushKnockback        = new MLGRushKnockback(this);
         this.partySplitManager       = new PartySplitManager(this);
+        this.partyFFAManager         = new PartyFFAManager(this);
         this.partyVsPartyManager     = new PartyVsPartyManager(this);
         this.leaderboardManager      = new LeaderboardManager(this);
         this.hologramManager         = new HologramManager(this);
         this.leaderboardGUIManager   = new LeaderboardGUIManager(this);
+        this.voidManager             = new VoidManager(this);
+        this.scoreboardTitleAnimator = new ScoreboardTitleAnimator();
+        this.scoreboardTitleAnimator.start(this);
+        this.matchDurationManager    = new MatchDurationManager(this);
 
         clearAllCaches();
 
@@ -174,11 +207,12 @@ public class PixCore extends JavaPlugin {
         loadConfigValues();
         loadTntTickConfig();
         loadNoFallDamageConfig();
+        loadArrowGiveConfig();
+        loadBestofConfig();
         setupTntVariables();
 
-        PartyCommand partyCommand = new PartyCommand();
+        PartyCommand partyCommand = new PartyCommand(this);
         if (getCommand("party") != null) getCommand("party").setExecutor(partyCommand);
-        getServer().getPluginManager().registerEvents(partyCommand, this);
 
         if (getCommand("pix")         != null) getCommand("pix").setExecutor(new PixCommand(this));
         if (getCommand("savelayout")  != null) getCommand("savelayout").setExecutor(new SaveLayoutCommand(this));
@@ -191,25 +225,44 @@ public class PixCore extends JavaPlugin {
             new PixCorePlaceholders(this).register();
         }
 
-        getServer().getPluginManager().registerEvents(new CombatListener(this),  this);
-        getServer().getPluginManager().registerEvents(new MatchListener(this),   this);
-        getServer().getPluginManager().registerEvents(new BedListener(this),     this);
-        getServer().getPluginManager().registerEvents(new GameplayListener(this), this);
+        getServer().getPluginManager().registerEvents(new Listener() {
+            @EventHandler
+            public void onJoin(PlayerJoinEvent e) {
+                Bukkit.getScheduler().runTaskLater(PixCore.this, () -> updatePrefixTagCache(e.getPlayer()), 20L);
+                com.pixra.pixCore.util.SpectatingMessageFilter.inject(e.getPlayer());
+            }
+        }, this);
 
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            com.pixra.pixCore.util.SpectatingMessageFilter.inject(p);
+        }
+
+        new BukkitRunnable() {
+            @Override public void run() {
+                for (Player p : Bukkit.getOnlinePlayers()) updatePrefixTagCache(p);
+            }
+        }.runTaskTimer(this, 6000L, 6000L);
+
+        getServer().getPluginManager().registerEvents(new CombatListener(this),    this);
+        getServer().getPluginManager().registerEvents(new MatchListener(this),     this);
+        getServer().getPluginManager().registerEvents(new BedListener(this),       this);
+        getServer().getPluginManager().registerEvents(new GameplayListener(this),  this);
         getServer().getPluginManager().registerEvents(this.blockDisappearManager,  this);
         getServer().getPluginManager().registerEvents(this.hitRewardManager,       this);
-        getServer().getPluginManager().registerEvents(this.customKnockbackManager, this);
         getServer().getPluginManager().registerEvents(this.snowballManager,        this);
-        getServer().getPluginManager().registerEvents(this.tntMechanicsManager,    this);
+        getServer().getPluginManager().registerEvents(this.tntMechanicsManager,         this);
+        getServer().getPluginManager().registerEvents(this.fireballKnockbackManager,    this);
+        getServer().getPluginManager().registerEvents(this.fireballCooldownManager,     this);
         getServer().getPluginManager().registerEvents(this.blockReplenishManager,  this);
         getServer().getPluginManager().registerEvents(this.itemMechanicsManager,   this);
         getServer().getPluginManager().registerEvents(this.noFallDamageManager,    this);
         getServer().getPluginManager().registerEvents(this.bowHitMessageManager,   this);
         getServer().getPluginManager().registerEvents(this.stickFightManager,      this);
         getServer().getPluginManager().registerEvents(this.hitActionBarManager,    this);
-        getServer().getPluginManager().registerEvents(this.mlgrushKnockback,       this);
         getServer().getPluginManager().registerEvents(this.partySplitManager,      this);
+        getServer().getPluginManager().registerEvents(this.partyFFAManager,        this);
         getServer().getPluginManager().registerEvents(this.partyVsPartyManager,    this);
+        getServer().getPluginManager().registerEvents(this.voidManager,            this);
     }
 
     @Override
@@ -231,12 +284,16 @@ public class PixCore extends JavaPlugin {
         lastBroadcastMessage.clear();
         lastBroadcastTime.clear();
         arenaSpawnLocations.clear();
+        activeStartCountdownPlayers.clear();
+        pendingHubOnJoin.clear();
+        hubOnJoinSpawn.clear();
         endedFightWinners.clear();
         playerMatchResults.clear();
         playerMatchKills.clear();
         killCountCooldown.clear();
         matchScores.clear();
         recentPartyEndedPlayers.clear();
+        drawFights.clear();
     }
 
     private void hookStrikePractice() {
@@ -254,12 +311,32 @@ public class PixCore extends JavaPlugin {
 
     public boolean isHooked()                      { return hook.isHooked(); }
     public Object  getStrikePracticeAPI()           { return hook.getAPI(); }
+    public com.pixra.pixCore.hook.StrikePracticeHook getHook() { return hook; }
 
     public boolean isInFight(Player player)         { return hook.isInFight(player); }
     public String  getKitName(Player player)        { return hook.getKitName(player); }
     public void    addSpectator(Player p)           { hook.addSpectator(p); }
     public void    removeSpectator(Player p, boolean c) { hook.removeSpectator(p, c); }
     public void    respawnInFight(Player p)         { hook.respawnInFight(p); }
+
+    public Location resolveHubLocation(Player player) {
+        Location hub = null;
+        try {
+            Object api = getStrikePracticeAPI();
+            if (api != null) {
+                hub = (Location) api.getClass().getMethod("getSpawnLocation").invoke(api);
+            }
+        } catch (Exception ignored) {}
+        if (hub == null && player != null && player.getWorld() != null) {
+            hub = player.getWorld().getSpawnLocation();
+        }
+        return hub != null ? hub.clone() : null;
+    }
+
+    public BlockDisappearManager getBlockDisappearManager() { return blockDisappearManager; }
+    public void suppressBlockDisappearReturn(java.util.UUID uuid) { if (blockDisappearManager != null) blockDisappearManager.suppressItemReturn(uuid); }
+    public void cancelBlockDisappear(java.util.UUID uuid)         { if (blockDisappearManager != null) blockDisappearManager.cancelPlayerTasks(uuid); }
+    public void unsuppressBlockDisappear(java.util.UUID uuid)     { if (blockDisappearManager != null) blockDisappearManager.unsuppressPlayer(uuid); }
 
     public Method getMGetFight()            { return hook.getMGetFight(); }
     public Method getMIsInFight()           { return hook.getMIsInFight(); }
@@ -294,10 +371,45 @@ public class PixCore extends JavaPlugin {
     public Map<UUID, BukkitTask>   getActiveCountdowns()       { return activeCountdowns; }
     public Map<UUID, Location>     getArenaSpawnLocations()    { return arenaSpawnLocations; }
 
+    public void updatePrefixTagCache(Player player) {
+        if (!Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) return;
+        String prefix = PlaceholderAPI.setPlaceholders(player, "%luckperms_prefix%");
+        String tag    = PlaceholderAPI.setPlaceholders(player, "%deluxetags_tag%");
+        prefixCache.put(player.getName(), "%luckperms_prefix%".equals(prefix) ? "" : prefix);
+        tagCache.put(player.getName(),    "%deluxetags_tag%".equals(tag)    ? "" : tag);
+    }
+
     public String getTeamColorCode(Player p, Object fight)  { return teamColorUtil.getTeamColorCode(p, fight); }
     public Color  getTeamColor(Player p)                    { return teamColorUtil.getTeamColor(p); }
     public String getColorNameFromCode(String code)         { return teamColorUtil.getColorNameFromCode(code); }
     public void   colorItem(ItemStack item, Color color)    { teamColorUtil.colorItem(item, color); }
+    public boolean isItemMatch(ItemStack target, ItemStack poolItem) { return teamColorUtil.isItemMatch(target, poolItem); }
+    public boolean saveLayoutToPreferredStorage(Player player, Object currentKit, List<ItemStack> inventory) {
+        return saveLayoutToPreferredStorageInternal(player, currentKit, inventory);
+    }
+    public void syncLayoutInstant(Player player) { syncLayoutInstant(player, 2); }
+    public void syncLayoutInstant(Player player, int verificationTicks) {
+        if (player == null || !player.isOnline()) return;
+
+        reapplyLayout(player);
+        if (verificationTicks <= 0) return;
+
+        new BukkitRunnable() {
+            int remaining = verificationTicks;
+
+            @Override
+            public void run() {
+                if (!player.isOnline() || !isInFight(player)) {
+                    cancel();
+                    return;
+                }
+
+                reapplyLayout(player);
+                remaining--;
+                if (remaining <= 0) cancel();
+            }
+        }.runTaskTimer(this, 1L, 1L);
+    }
 
     public Sound getSoundByName(String name) { return SoundUtil.getSoundByName(name); }
 
@@ -310,9 +422,6 @@ public class PixCore extends JavaPlugin {
         reloadConfig();
         this.voidYLimit              = getConfig().getInt("settings.void-y-trigger", -64);
         this.buildRestrictionsEnabled = getConfig().getBoolean("settings.build-restrictions.enabled", true);
-        this.maxBuildY               = getConfig().getInt("settings.build-restrictions.max-build-y", 100);
-        this.checkArenaBorders       = getConfig().getBoolean("settings.build-restrictions.check-arena-borders", true);
-        this.buildRestrictionKits    = getConfig().getStringList("settings.build-restrictions.kits");
         this.roundEndKits            = getConfig().getStringList("settings.bestof-scored.kits");
         this.bowCooldownKits         = getConfig().getStringList("settings.bow-cooldown.kits");
         this.deathDisabledKits       = getConfig().getStringList("settings.death.disabled-kits");
@@ -382,7 +491,7 @@ public class PixCore extends JavaPlugin {
 
         this.startMatchMessage   = ChatColor.translateAlternateColorCodes('&', getConfig().getString(
                 resolveKey("settings.start-countdown.start-message", "start-countdown.start-message"), "&aMatch Started!"));
-        this.startCountdownEnabled = resolve("settings.start-countdown.enabled", "start-countdown.enabled", false);
+        this.startCountdownEnabled = resolve("settings.start-countdown.enabled", "start-countdown.enabled", true);
 
         this.startCountdownTitles = new HashMap<>();
         ConfigurationSection titleSection = getConfig().getConfigurationSection("settings.start-countdown.titles");
@@ -427,6 +536,35 @@ public class PixCore extends JavaPlugin {
         noFallDamageConfig = YamlConfiguration.loadConfiguration(noFallDamageFile);
     }
 
+    public void loadArrowGiveConfig() {
+        arrowGiveFile = new File(getDataFolder(), "arrowgive.yml");
+        if (!arrowGiveFile.exists()) {
+            arrowGiveFile.getParentFile().mkdirs();
+            saveResource("arrowgive.yml", false);
+        }
+        arrowGiveConfig = YamlConfiguration.loadConfiguration(arrowGiveFile);
+        this.bowAutoGiveArrowEnabled = arrowGiveConfig.getBoolean("enabled", false);
+        this.bowAutoGiveArrowKits    = arrowGiveConfig.getStringList("kits");
+    }
+
+    public void loadBestofConfig() {
+        bestofFile = new File(getDataFolder(), "bestof.yml");
+        if (!bestofFile.exists()) {
+            bestofFile.getParentFile().mkdirs();
+            try {
+                saveResource("bestof.yml", false);
+            } catch (Exception e) {
+                try (java.io.PrintWriter pw = new java.io.PrintWriter(bestofFile)) {
+                    pw.println("stickfight:");
+                    pw.println("  score-limit: 5");
+                    pw.println("stickfightelo:");
+                    pw.println("  score-limit: 5");
+                } catch (Exception ignored) {}
+            }
+        }
+        bestofConfig = YamlConfiguration.loadConfiguration(bestofFile);
+    }
+
     private void setupTntVariables() {
         try {
             tntEntityType = EntityType.valueOf("PRIMED_TNT");
@@ -443,6 +581,21 @@ public class PixCore extends JavaPlugin {
 
     public boolean isInFightAny(Player player)  { return isInFight(player); }
 
+    public void clearPlayerJoinState(UUID uid) {
+        cleanupPlayer(uid, false);
+        pendingHubOnJoin.remove(uid);
+        hubOnJoinSpawn.remove(uid);
+        activeStartCountdownPlayers.remove(uid);
+        deathMessageCooldowns.remove(uid);
+        lastBroadcastMessage.remove(uid);
+        lastBroadcastTime.remove(uid);
+        arenaSpawnLocations.remove(uid);
+        playerMatchResults.remove(uid);
+        playerMatchKills.remove(uid);
+        recentPartyEndedPlayers.remove(uid);
+        leavingMatchPlayers.remove(uid);
+    }
+
     public void cleanupPlayer(UUID uid, boolean isQuit) {
         if (activeCountdowns.containsKey(uid)) {
             activeCountdowns.get(uid).cancel();
@@ -453,14 +606,22 @@ public class PixCore extends JavaPlugin {
         lastDamager.remove(uid);
         lastDamageTime.remove(uid);
         bowCooldowns.remove(uid);
+        if (fireballCooldownManager != null) fireballCooldownManager.clearPlayer(uid);
         killCountCooldown.remove(uid);
         frozenPlayers.remove(uid);
         if (isQuit) {
+            if (activeStartCountdownPlayers.contains(uid)) {
+                pendingHubOnJoin.add(uid);
+            }
+            activeStartCountdownPlayers.remove(uid);
             deathMessageCooldowns.remove(uid);
             lastBroadcastMessage.remove(uid);
             lastBroadcastTime.remove(uid);
             arenaSpawnLocations.remove(uid);
             playerMatchKills.remove(uid);
+        }
+        if (hologramManager != null) {
+            hologramManager.clearPlayerHologram(uid);
         }
         if (respawnManager != null) {
             respawnManager.forceStop(Bukkit.getPlayer(uid));
@@ -496,7 +657,8 @@ public class PixCore extends JavaPlugin {
         String msg = getMsg(configKey);
         if (msg == null || msg.isEmpty()) {
             if      (configKey.equals("bed-break-self"))             msg = ChatColor.RED + "You can't break your own bed!";
-            else if (configKey.equals("block-place-denied-start"))   msg = ChatColor.RED + "You cannot place blocks while the match is starting!";
+            else if (configKey.equals("block-place-denied-start"))       msg = ChatColor.RED + "You cannot place blocks while the match is starting!";
+            else if (configKey.equals("block-place-denied-start-round")) msg = ChatColor.RED + "You cannot place blocks while the round is starting!";
             else if (configKey.equals("block-place-denied"))         msg = ChatColor.RED + "You cannot place blocks while respawning!";
             else if (configKey.equals("block-break-denied-start"))   msg = ChatColor.RED + "You cannot break blocks while the match is starting!";
         }
@@ -510,429 +672,606 @@ public class PixCore extends JavaPlugin {
         return "";
     }
 
-    @SuppressWarnings("unchecked")
-    public void applyStartKit(Player p) {
+    public void reapplyLayout(Player p) {
         if (!isHooked() || hook.getMGetKit() == null || hook.getAPI() == null) return;
+        if (!p.isOnline() || !isInFight(p)) return;
         try {
-            Object baseKit = hook.getMGetKit().invoke(hook.getAPI(), p);
-            if (baseKit == null) return;
+            Object currentKit = hook.getMGetKit().invoke(hook.getAPI(), p);
+            Object preferredKit = resolvePreferredLayoutKit(p, currentKit);
+            Object activeKit = preferredKit != null ? preferredKit : currentKit;
+            if (activeKit == null) return;
+            String baseName = normalizeLayoutKey(getBattleKitName(currentKit != null ? currentKit : activeKit));
 
-            String    baseName = ChatColor.stripColor(
-                    (String) baseKit.getClass().getMethod("getName").invoke(baseKit)).toLowerCase();
-            ItemStack baseIcon = null;
-            try { baseIcon = (ItemStack) hook.mBattleKitGetIcon.invoke(baseKit); } catch (Exception ignored) {}
-            String baseIconName = (baseIcon != null && baseIcon.hasItemMeta() && baseIcon.getItemMeta().hasDisplayName())
-                    ? ChatColor.stripColor(baseIcon.getItemMeta().getDisplayName()).toLowerCase() : null;
-
-            boolean hasActualItems = false;
-            for (ItemStack item : p.getInventory().getContents()) {
-                if (item != null && item.getType() != org.bukkit.Material.AIR) {
-                    boolean isLobbyItem = false;
-                    String  type        = item.getType().name();
-                    if (type.contains("BOOK") || type.contains("BED") || type.contains("NAME_TAG")
-                            || type.contains("PAPER") || type.contains("EMERALD") || type.contains("COMPASS")
-                            || type.contains("WATCH") || type.contains("CLOCK") || type.contains("CHEST")
-                            || type.contains("SLIME")) {
-                        if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
-                            String name = ChatColor.stripColor(item.getItemMeta().getDisplayName()).toLowerCase();
-                            if (name.contains("layout") || name.contains("kit") || name.contains("default")
-                                    || name.contains("edit") || name.contains("leave") || name.contains("spectate")
-                                    || name.contains("play") || name.contains("options")
-                                    || (baseIconName != null && name.equals(baseIconName))) {
-                                isLobbyItem = true;
-                            }
-                        }
-                    }
-                    if (!isLobbyItem) { hasActualItems = true; break; }
-                }
-            }
-
-            if (!hasActualItems) {
-                p.getInventory().clear();
-                if (hook.mBattleKitGiveKit != null) {
-                    hook.mBattleKitGiveKit.invoke(baseKit, p);
-                } else if (hook.getMKitApply() != null) {
-                    hook.getMKitApply().invoke(baseKit, p);
-                }
-                p.updateInventory();
-            }
-
-            ItemStack helmet = null, chest = null, legs = null, boots = null;
+            Object fightObj = null;
             try {
-                if (hook.mBattleKitGetHelmet     != null) helmet = (ItemStack) hook.mBattleKitGetHelmet.invoke(baseKit);
-                if (hook.mBattleKitGetChestplate != null) chest  = (ItemStack) hook.mBattleKitGetChestplate.invoke(baseKit);
-                if (hook.mBattleKitGetLeggings   != null) legs   = (ItemStack) hook.mBattleKitGetLeggings.invoke(baseKit);
-                if (hook.mBattleKitGetBoots      != null) boots  = (ItemStack) hook.mBattleKitGetBoots.invoke(baseKit);
+                if (hook.getMGetFight() != null) fightObj = hook.getMGetFight().invoke(hook.getAPI(), p);
             } catch (Exception ignored) {}
 
-            List<Object> allKits = new ArrayList<>();
+            Color teamColor = (partyFFAManager != null && partyFFAManager.isPartyFFA(fightObj))
+                    ? null
+                    : teamColorUtil.getTeamColor(p, fightObj);
 
-            File spFolder = new File(getDataFolder().getParentFile(), "StrikePractice");
-            File pdFile   = new File(spFolder, "playerdata/" + p.getUniqueId() + ".yml");
-            if (pdFile.exists()) {
-                List<?> spKits = YamlConfiguration.loadConfiguration(pdFile).getList("kits");
-                if (spKits != null) allKits.addAll(spKits);
-            }
-            File pixFile = new File(getDataFolder(), "layouts/" + p.getUniqueId() + ".yml");
-            if (pixFile.exists()) {
-                List<?> pixKits = YamlConfiguration.loadConfiguration(pixFile).getList("kits");
-                if (pixKits != null) {
-                    for (int i = pixKits.size() - 1; i >= 0; i--) allKits.add(0, pixKits.get(i));
+            StoredLayoutSnapshot storedLayout = resolveStoredLayout(p, baseName, activeKit);
+            List<ItemStack> matched = storedLayout != null ? storedLayout.inventory : null;
+            List<ItemStack> baseInventory = getBattleKitInventory(activeKit);
+
+            List<ItemStack> layoutInventory = matched != null ? matched : baseInventory;
+
+            ItemStack kitHelmet = getBattleKitPiece(hook.mBattleKitGetHelmet, activeKit);
+            ItemStack kitChest  = getBattleKitPiece(hook.mBattleKitGetChestplate, activeKit);
+            ItemStack kitLegs   = getBattleKitPiece(hook.mBattleKitGetLeggings, activeKit);
+            ItemStack kitBoots  = getBattleKitPiece(hook.mBattleKitGetBoots, activeKit);
+            ItemStack curHelmet = p.getInventory().getHelmet();
+            ItemStack curChest  = p.getInventory().getChestplate();
+            ItemStack curLegs   = p.getInventory().getLeggings();
+            ItemStack curBoots  = p.getInventory().getBoots();
+
+            boolean inventoryChanged = false;
+            if (layoutInventory != null) {
+
+                ItemStack[] newContents = new ItemStack[36];
+                for (int i = 0; i < layoutInventory.size() && i < 36; i++) {
+                    ItemStack item = layoutInventory.get(i);
+                    if (item != null && item.getType() != org.bukkit.Material.AIR)
+                        newContents[i] = item.clone();
                 }
+
+                for (ItemStack item : newContents) teamColorUtil.colorItem(item, teamColor);
+                inventoryChanged = applyMainInventory(p, newContents);
             }
-
-            if (!allKits.isEmpty()) {
-                for (Object customKit : allKits) {
-                    if (customKit == null) continue;
-                    boolean        isMatch = false;
-                    List<ItemStack> yamlInv = null;
-
-                    if (!Map.class.isAssignableFrom(customKit.getClass())) {
-                        ItemStack icon  = null;
-                        try { icon = (ItemStack) hook.mBattleKitGetIcon.invoke(customKit); } catch (Exception ignored) {}
-                        String dName = (icon != null && icon.hasItemMeta() && icon.getItemMeta().hasDisplayName())
-                                ? ChatColor.stripColor(icon.getItemMeta().getDisplayName()).toLowerCase() : "";
-                        String kName = "";
-                        try { kName = ChatColor.stripColor((String) customKit.getClass().getMethod("getName").invoke(customKit)).toLowerCase(); }
-                        catch (Exception ignored) {}
-                        if (dName.contains(baseName) || kName.contains(baseName)) {
-                            isMatch = true;
-                            if (hook.mBattleKitGetInv != null) {
-                                try {
-                                    Object raw = hook.mBattleKitGetInv.invoke(customKit);
-                                    if (raw instanceof List) yamlInv = (List<ItemStack>) raw;
-                                    else if (raw instanceof ItemStack[]) yamlInv = java.util.Arrays.asList((ItemStack[]) raw);
-                                } catch (Exception ignored) {}
-                            }
-                            if (yamlInv == null) {
-                                try { yamlInv = (List<ItemStack>) customKit.getClass().getMethod("getInventory").invoke(customKit); }
-                                catch (Exception ignored) {}
-                            }
-                        }
-                    } else {
-                        Map<?, ?> map   = (Map<?, ?>) customKit;
-                        ItemStack icon  = map.get("icon") instanceof ItemStack ? (ItemStack) map.get("icon") : null;
-                        String    dName = (icon != null && icon.hasItemMeta() && icon.getItemMeta().hasDisplayName())
-                                ? ChatColor.stripColor(icon.getItemMeta().getDisplayName()).toLowerCase() : "";
-                        String    kName = map.containsKey("name")
-                                ? ChatColor.stripColor(String.valueOf(map.get("name"))).toLowerCase() : "";
-                        if (dName.contains(baseName) || kName.contains(baseName)) {
-                            isMatch = true;
-                            if (map.get("inventory") instanceof List) yamlInv = (List<ItemStack>) map.get("inventory");
-                        }
-                    }
-
-                    if (isMatch && yamlInv != null) {
-                        ItemStack[]     current  = p.getInventory().getContents();
-                        List<ItemStack> pool     = new ArrayList<>();
-                        final String    finalIconName = baseIconName;
-
-                        for (int i = 0; i < 36 && i < current.length; i++) {
-                            ItemStack item = current[i];
-                            if (item == null || item.getType() == org.bukkit.Material.AIR) continue;
-                            if (!isLobbyItem(item, finalIconName)) pool.add(item.clone());
-                        }
-
-                        ItemStack[] newContents = new ItemStack[current.length];
-                        for (int i = 0; i < yamlInv.size() && i < newContents.length; i++) {
-                            ItemStack target = yamlInv.get(i);
-                            if (target == null || target.getType() == org.bukkit.Material.AIR) continue;
-                            ItemStack matched = null;
-                            for (int j = 0; j < pool.size(); j++) {
-                                if (teamColorUtil.isItemMatch(target, pool.get(j))) {
-                                    matched = pool.remove(j); break;
-                                }
-                            }
-                            if (matched != null) {
-                                newContents[i] = matched;
-                            } else if (!isLobbyItem(target, finalIconName)) {
-                                newContents[i] = target.clone();
-                            }
-                        }
-                        for (ItemStack leftover : pool) {
-                            for (int i = 0; i < newContents.length; i++) {
-                                if (newContents[i] == null) { newContents[i] = leftover; break; }
-                            }
-                        }
-                        p.getInventory().setContents(newContents);
-                        break;
-                    }
-                }
-            }
-
-            Color       teamColor = teamColorUtil.getTeamColor(p);
-            ItemStack[] contents  = p.getInventory().getContents();
-            for (int i = 0; i < contents.length; i++) {
-                ItemStack item = contents[i];
-                if (item == null || item.getType() == org.bukkit.Material.AIR) continue;
-                if (isLobbyItem(item, baseIconName)) { contents[i] = null; }
-                else { teamColorUtil.colorItem(item, teamColor); }
-            }
-            p.getInventory().setContents(contents);
 
             ItemStack[] armor = new ItemStack[4];
-            armor[0] = (boots  != null) ? boots.clone()  : p.getInventory().getBoots();
-            armor[1] = (legs   != null) ? legs.clone()   : p.getInventory().getLeggings();
-            armor[2] = (chest  != null) ? chest.clone()  : p.getInventory().getChestplate();
-            armor[3] = (helmet != null) ? helmet.clone() : p.getInventory().getHelmet();
+            armor[0] = kitBoots  != null ? kitBoots.clone()  : (curBoots  != null ? curBoots.clone()  : null);
+            armor[1] = kitLegs   != null ? kitLegs.clone()   : (curLegs   != null ? curLegs.clone()   : null);
+            armor[2] = kitChest  != null ? kitChest.clone()  : (curChest  != null ? curChest.clone()  : null);
+            armor[3] = kitHelmet != null ? kitHelmet.clone() : (curHelmet != null ? curHelmet.clone() : null);
             for (ItemStack a : armor) teamColorUtil.colorItem(a, teamColor);
-            p.getInventory().setArmorContents(armor);
-            p.updateInventory();
+            boolean armorChanged = applyArmorContents(p, armor);
+
+            if (partyFFAManager != null && partyFFAManager.isPartyFFA(fightObj)) {
+                boolean restored = partyFFAManager.restoreArmorColor(p);
+                if (!restored && (inventoryChanged || armorChanged)) p.updateInventory();
+            } else if (inventoryChanged || armorChanged) {
+                p.updateInventory();
+            }
 
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    private boolean isLobbyItem(ItemStack item, String baseIconName) {
-        if (item == null || item.getType() == org.bukkit.Material.AIR) return false;
-        String type = item.getType().name();
+    @SuppressWarnings("deprecation")
+    public void forceRestoreKitBlocks(Player player, Object fight) {
+        if (!isHooked() || hook.getMGetKit() == null || hook.getAPI() == null) return;
+        if (!player.isOnline()) return;
+        try {
+            Object currentKit = hook.getMGetKit().invoke(hook.getAPI(), player);
+            if (currentKit == null) return;
 
-        if ((type.equals("BOOK") || type.equals("WRITTEN_BOOK") || type.equals("BOOK_AND_QUILL")
-                || type.equals("WRITABLE_BOOK")) && (!item.hasItemMeta() || !item.getItemMeta().hasDisplayName())) {
-            return true;
+            Object preferredKit = resolvePreferredLayoutKit(player, currentKit);
+            Object activeKit = preferredKit != null ? preferredKit : currentKit;
+            String baseName = normalizeLayoutKey(getBattleKitName(currentKit != null ? currentKit : activeKit));
+            StoredLayoutSnapshot storedLayout = resolveStoredLayout(player, baseName, activeKit);
+            List<ItemStack> matched = storedLayout != null ? storedLayout.inventory : null;
+            List<ItemStack> baseInventory = getBattleKitInventory(activeKit);
+            List<ItemStack> layoutInventory = matched != null ? matched : baseInventory;
+            if (layoutInventory == null || layoutInventory.isEmpty()) return;
+
+            Object fightObj = fight;
+            if (fightObj == null) {
+                try {
+                    if (hook.getMGetFight() != null)
+                        fightObj = hook.getMGetFight().invoke(hook.getAPI(), player);
+                } catch (Exception ignored) {}
+            }
+
+            Color teamColor;
+            String ffaCode = (partyFFAManager != null) ? partyFFAManager.getFfaColorCode(player) : null;
+            if (ffaCode != null) {
+                teamColor = ffaCode.contains("§9") ? Color.BLUE : Color.RED;
+            } else {
+                teamColor = teamColorUtil.getTeamColor(player, fightObj);
+            }
+
+            boolean changed = false;
+            for (int i = 0; i < Math.min(layoutInventory.size(), 36); i++) {
+                ItemStack kitItem = layoutInventory.get(i);
+                if (kitItem == null || kitItem.getType() == org.bukkit.Material.AIR) continue;
+                if (kitItem.getType() == org.bukkit.Material.TNT) continue;
+                if (!kitItem.getType().isBlock()) continue;
+
+                ItemStack toGive = kitItem.clone();
+                if (teamColor != null) teamColorUtil.colorItem(toGive, teamColor);
+                player.getInventory().setItem(i, toGive);
+                changed = true;
+            }
+            if (changed) player.updateInventory();
+        } catch (Exception ignored) {}
+    }
+
+    public void applyLayoutOnly(Player p) {
+        if (!isHooked() || hook.getMGetKit() == null || hook.getAPI() == null) return;
+        if (!p.isOnline() || !isInFight(p)) return;
+        try {
+            Object currentKit = hook.getMGetKit().invoke(hook.getAPI(), p);
+            Object preferredKit = resolvePreferredLayoutKit(p, currentKit);
+            Object activeKit = preferredKit != null ? preferredKit : currentKit;
+            if (activeKit == null) return;
+            String baseName = normalizeLayoutKey(getBattleKitName(currentKit != null ? currentKit : activeKit));
+
+            StoredLayoutSnapshot storedLayout = resolveStoredLayout(p, baseName, activeKit);
+            List<ItemStack> matched = storedLayout != null ? storedLayout.inventory : null;
+            if (matched == null && activeKit != currentKit) matched = getBattleKitInventory(activeKit);
+            if (matched == null) return;
+
+            ItemStack[] newContents = new ItemStack[36];
+            for (int i = 0; i < matched.size() && i < 36; i++) {
+                ItemStack item = matched.get(i);
+                if (item != null && item.getType() != org.bukkit.Material.AIR)
+                    newContents[i] = item.clone();
+            }
+            if (applyMainInventory(p, newContents)) p.updateInventory();
+        } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    private List<ItemStack> getBattleKitInventory(Object battleKit) {
+        if (battleKit == null) return null;
+        try {
+            if (hook.mBattleKitGetInv != null) {
+                Object raw = hook.mBattleKitGetInv.invoke(battleKit);
+                if (raw instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<ItemStack> cast = (List<ItemStack>) raw;
+                    return cast;
+                }
+                if (raw instanceof ItemStack[]) return Arrays.asList((ItemStack[]) raw);
+            }
+
+            Object raw = battleKit.getClass().getMethod("getInventory").invoke(battleKit);
+            if (raw instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<ItemStack> cast = (List<ItemStack>) raw;
+                return cast;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private ItemStack getBattleKitPiece(Method getter, Object battleKit) {
+        if (getter == null || battleKit == null) return null;
+        try {
+            ItemStack piece = (ItemStack) getter.invoke(battleKit);
+            return piece != null ? piece.clone() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private ItemStack[] toMainInventoryArray(List<ItemStack> source) {
+        ItemStack[] contents = new ItemStack[36];
+        if (source == null) return contents;
+        for (int i = 0; i < source.size() && i < 36; i++) {
+            ItemStack item = source.get(i);
+            if (item != null && item.getType() != org.bukkit.Material.AIR)
+                contents[i] = item.clone();
+        }
+        return contents;
+    }
+
+    private boolean applyMainInventory(Player player, ItemStack[] newContents) {
+        boolean changed = false;
+        for (int i = 0; i < 36; i++) {
+            ItemStack next = (newContents != null && i < newContents.length) ? newContents[i] : null;
+            if (itemStacksEqual(player.getInventory().getItem(i), next)) continue;
+            player.getInventory().setItem(i, next != null ? next.clone() : null);
+            changed = true;
+        }
+        return changed;
+    }
+
+    private boolean applyArmorContents(Player player, ItemStack[] armor) {
+        if (itemStackArraysEqual(player.getInventory().getArmorContents(), armor)) return false;
+        ItemStack[] cloned = new ItemStack[4];
+        for (int i = 0; i < cloned.length; i++) {
+            if (armor != null && i < armor.length && armor[i] != null) cloned[i] = armor[i].clone();
+        }
+        player.getInventory().setArmorContents(cloned);
+        return true;
+    }
+
+    private boolean itemStackArraysEqual(ItemStack[] first, ItemStack[] second) {
+        int max = Math.max(first != null ? first.length : 0, second != null ? second.length : 0);
+        for (int i = 0; i < max; i++) {
+            ItemStack a = (first != null && i < first.length) ? first[i] : null;
+            ItemStack b = (second != null && i < second.length) ? second[i] : null;
+            if (!itemStacksEqual(a, b)) return false;
+        }
+        return true;
+    }
+
+    private boolean itemStacksEqual(ItemStack first, ItemStack second) {
+        if (isEmpty(first) && isEmpty(second)) return true;
+        return Objects.equals(first, second);
+    }
+
+    private boolean isEmpty(ItemStack item) {
+        return item == null || item.getType() == org.bukkit.Material.AIR;
+    }
+
+    private Object resolvePreferredLayoutKit(Player player, Object currentKit) {
+        Object editedKit = getLastSelectedEditedKit(player);
+        if (editedKit == null) return currentKit;
+        if (currentKit == null) return editedKit;
+
+        String baseName = normalizeLayoutKey(getBattleKitName(currentKit));
+        KitIdentity editedIdentity = extractKitIdentity(editedKit);
+        if (matchesKey(editedIdentity.name, baseName, true)
+                || matchesKey(editedIdentity.display, baseName, true)
+                || matchesKey(editedIdentity.name, baseName, false)
+                || matchesKey(editedIdentity.display, baseName, false)) {
+            return editedKit;
+        }
+        return currentKit;
+    }
+
+    private Object getLastSelectedEditedKit(Player player) {
+        if (player == null || !isHooked() || hook.getAPI() == null || hook.getMGetLastSelectedEditedKit() == null)
+            return null;
+        try {
+            return hook.getMGetLastSelectedEditedKit().invoke(hook.getAPI(), player);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private StoredLayoutSnapshot resolveStoredLayout(Player player, String baseName, Object preferredKit) {
+        StoredLayoutSnapshot best = null;
+
+        File spFile = getStrikePracticePlayerDataFile(player.getUniqueId());
+        if (spFile != null && spFile.exists()) {
+            try {
+                YamlConfiguration spConfig = YamlConfiguration.loadConfiguration(spFile);
+                List<ItemStack> spLayout = findLayoutMatchInPlayerData(spConfig, baseName, preferredKit);
+                if (spLayout != null) best = new StoredLayoutSnapshot(spLayout, spFile.lastModified());
+            } catch (Exception ignored) {}
         }
 
-        if (!item.hasItemMeta() || !item.getItemMeta().hasDisplayName()) return false;
-        String name = ChatColor.stripColor(item.getItemMeta().getDisplayName()).toLowerCase();
-        if (baseIconName != null && name.equals(baseIconName)) return true;
-        if (type.contains("BOOK") || type.contains("BED") || type.contains("NAME_TAG")
-                || type.contains("PAPER") || type.contains("EMERALD")) {
-            return name.contains("layout") || name.contains("kit") || name.contains("default")
-                    || name.contains("#") || name.contains("edit") || name.contains("editor")
-                    || name.contains("custom") || name.contains("choose");
+        File legacyFile = getLegacyLayoutFile(player.getUniqueId());
+        if (legacyFile.exists()) {
+            try {
+                List<?> legacyKits = YamlConfiguration.loadConfiguration(legacyFile).getList("kits");
+                List<ItemStack> legacyLayout = findLayoutMatch(legacyKits, baseName, preferredKit);
+                if (legacyLayout != null && (best == null || legacyFile.lastModified() > best.lastModified)) {
+                    best = new StoredLayoutSnapshot(legacyLayout, legacyFile.lastModified());
+                }
+            } catch (Exception ignored) {}
+        }
+
+        return best;
+    }
+
+    private File getStrikePracticePlayerDataFile(UUID uuid) {
+        org.bukkit.plugin.Plugin strikePractice = Bukkit.getPluginManager().getPlugin("StrikePractice");
+        if (strikePractice == null) return null;
+
+        File folder = new File(strikePractice.getDataFolder(), "playerdata");
+        if (!folder.exists() && !folder.mkdirs()) return null;
+        return new File(folder, uuid + ".yml");
+    }
+
+    private File getLegacyLayoutFile(UUID uuid) {
+        return new File(new File(getDataFolder(), "layouts"), uuid + ".yml");
+    }
+
+    private boolean saveLayoutToPreferredStorageInternal(Player player, Object currentKit, List<ItemStack> inventory) {
+        if (player == null || inventory == null) return false;
+
+        Object preferredKit = resolvePreferredLayoutKit(player, currentKit);
+        Object templateKit = preferredKit != null ? preferredKit : currentKit;
+        if (templateKit == null) return false;
+
+        String baseName = normalizeLayoutKey(getBattleKitName(currentKit != null ? currentKit : templateKit));
+        List<ItemStack> snapshot = cloneInventoryList(inventory);
+
+        boolean savedToStrikePractice = saveLayoutToStrikePracticePlayerData(
+                player.getUniqueId(), baseName, templateKit, snapshot);
+        boolean saved = savedToStrikePractice
+                || saveLayoutToLegacyLayouts(player.getUniqueId(), baseName, templateKit, snapshot);
+        if (saved) {
+            applyLayoutToRuntimeKit(templateKit, snapshot);
+            if (savedToStrikePractice) removeLegacyLayoutEntry(player.getUniqueId(), baseName, templateKit);
+        }
+        return saved;
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean saveLayoutToStrikePracticePlayerData(UUID uuid, String baseName, Object preferredKit, List<ItemStack> inventory) {
+        File spFile = getStrikePracticePlayerDataFile(uuid);
+        if (spFile == null) return false;
+
+        try {
+            YamlConfiguration config = spFile.exists()
+                    ? YamlConfiguration.loadConfiguration(spFile)
+                    : new YamlConfiguration();
+
+            boolean updated = false;
+            Object customKit = config.get("custom-kit");
+            if (customKit != null && matchesKitEntry(customKit, baseName, preferredKit)) {
+                config.set("custom-kit", buildUpdatedKitEntry(customKit, preferredKit, inventory));
+                updated = true;
+            }
+
+            List<Object> kits = (List<Object>) config.getList("kits");
+            if (kits == null) kits = new ArrayList<>();
+
+            int matchIndex = findMatchingKitIndex(kits, baseName, preferredKit);
+            if (matchIndex >= 0) {
+                kits.set(matchIndex, buildUpdatedKitEntry(kits.get(matchIndex), preferredKit, inventory));
+                updated = true;
+            } else if (!updated) {
+                kits.add(buildUpdatedKitEntry(null, preferredKit, inventory));
+                updated = true;
+            }
+
+            if (!updated) return false;
+
+            config.set("kits", kits);
+            config.save(spFile);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean saveLayoutToLegacyLayouts(UUID uuid, String baseName, Object preferredKit, List<ItemStack> inventory) {
+        File legacyFile = getLegacyLayoutFile(uuid);
+        File parent = legacyFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) return false;
+
+        try {
+            YamlConfiguration config = legacyFile.exists()
+                    ? YamlConfiguration.loadConfiguration(legacyFile)
+                    : new YamlConfiguration();
+
+            List<Object> kits = (List<Object>) config.getList("kits");
+            if (kits == null) kits = new ArrayList<>();
+
+            int matchIndex = findMatchingKitIndex(kits, baseName, preferredKit);
+            if (matchIndex >= 0) kits.set(matchIndex, buildUpdatedKitEntry(kits.get(matchIndex), preferredKit, inventory));
+            else kits.add(buildUpdatedKitEntry(null, preferredKit, inventory));
+
+            config.set("kits", kits);
+            config.save(legacyFile);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void removeLegacyLayoutEntry(UUID uuid, String baseName, Object preferredKit) {
+        File legacyFile = getLegacyLayoutFile(uuid);
+        if (!legacyFile.exists()) return;
+
+        try {
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(legacyFile);
+            List<Object> kits = (List<Object>) config.getList("kits");
+            if (kits == null || kits.isEmpty()) {
+                legacyFile.delete();
+                return;
+            }
+
+            int matchIndex = findMatchingKitIndex(kits, baseName, preferredKit);
+            if (matchIndex < 0) return;
+
+            kits.remove(matchIndex);
+            if (kits.isEmpty()) {
+                legacyFile.delete();
+                return;
+            }
+
+            config.set("kits", kits);
+            config.save(legacyFile);
+        } catch (Exception ignored) {}
+    }
+
+    private void applyLayoutToRuntimeKit(Object preferredKit, List<ItemStack> inventory) {
+        if (preferredKit == null || inventory == null) return;
+        try {
+            Method setInventory = preferredKit.getClass().getMethod("setInventory", List.class);
+            setInventory.invoke(preferredKit, cloneInventoryList(inventory));
+        } catch (Exception ignored) {}
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object buildUpdatedKitEntry(Object existingEntry, Object templateKit, List<ItemStack> inventory) {
+        Map<String, Object> map = existingEntry instanceof Map
+                ? new LinkedHashMap<>((Map<String, Object>) existingEntry)
+                : new LinkedHashMap<>();
+
+        map.put("==", "BattleKit");
+
+        String name = existingEntry instanceof Map
+                ? map.containsKey("name") ? String.valueOf(map.get("name")) : getBattleKitName(templateKit)
+                : getBattleKitName(templateKit);
+        ItemStack icon = existingEntry instanceof Map && map.get("icon") instanceof ItemStack
+                ? ((ItemStack) map.get("icon")).clone()
+                : getBattleKitIcon(templateKit);
+
+        if (name != null && !name.isEmpty()) map.put("name", name);
+        if (icon != null) map.put("icon", icon.clone());
+        map.put("inventory", cloneInventoryList(inventory));
+        return map;
+    }
+
+    private List<ItemStack> cloneInventoryList(List<ItemStack> inventory) {
+        List<ItemStack> copy = new ArrayList<>();
+        for (ItemStack item : inventory) copy.add(item != null ? item.clone() : null);
+        return copy;
+    }
+
+    private String getBattleKitName(Object battleKit) {
+        if (battleKit == null) return "";
+        try {
+            Object raw = battleKit.getClass().getMethod("getName").invoke(battleKit);
+            return raw != null ? String.valueOf(raw) : "";
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private ItemStack getBattleKitIcon(Object battleKit) {
+        if (battleKit == null) return null;
+        try {
+            if (hook.mBattleKitGetIcon != null) {
+                ItemStack icon = (ItemStack) hook.mBattleKitGetIcon.invoke(battleKit);
+                return icon != null ? icon.clone() : null;
+            }
+            ItemStack icon = (ItemStack) battleKit.getClass().getMethod("getIcon").invoke(battleKit);
+            return icon != null ? icon.clone() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String normalizeLayoutKey(String value) {
+        return value == null ? "" : ChatColor.stripColor(value).toLowerCase(Locale.ROOT);
+    }
+
+    private String extractItemDisplayName(ItemStack icon) {
+        if (icon == null || !icon.hasItemMeta() || !icon.getItemMeta().hasDisplayName()) return "";
+        return normalizeLayoutKey(icon.getItemMeta().getDisplayName());
+    }
+
+    private List<ItemStack> findLayoutMatchInPlayerData(YamlConfiguration config, String baseName, Object preferredKit) {
+        Object customKit = config.get("custom-kit");
+        if (customKit != null) {
+            List<ItemStack> customLayout = findLayoutMatch(Collections.singletonList(customKit), baseName, preferredKit);
+            if (customLayout != null) return customLayout;
+        }
+        return findLayoutMatch(config.getList("kits"), baseName, preferredKit);
+    }
+
+    private int findMatchingKitIndex(List<?> kits, String baseName, Object preferredKit) {
+        if (kits == null || kits.isEmpty()) return -1;
+        for (int pass = 0; pass < 4; pass++) {
+            for (int i = 0; i < kits.size(); i++) {
+                Object entry = kits.get(i);
+                if (entry == null) continue;
+                if (matchesKitEntry(entry, baseName, preferredKit, pass)) return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean matchesKitEntry(Object entry, String baseName, Object preferredKit) {
+        for (int pass = 0; pass < 4; pass++) {
+            if (matchesKitEntry(entry, baseName, preferredKit, pass)) return true;
         }
         return false;
     }
 
+    private boolean matchesKitEntry(Object entry, String baseName, Object preferredKit, int pass) {
+        return matchesKitIdentity(extractKitIdentity(entry), baseName,
+                normalizeLayoutKey(getBattleKitName(preferredKit)),
+                extractItemDisplayName(getBattleKitIcon(preferredKit)),
+                pass);
+    }
+
+    private boolean matchesKitIdentity(KitIdentity identity, String baseName,
+                                       String preferredName, String preferredDisplay, int pass) {
+        if (identity == null) return false;
+        switch (pass) {
+            case 0:
+                return matchesKey(identity.name, preferredName, true)
+                        || matchesKey(identity.display, preferredName, true)
+                        || matchesKey(identity.name, preferredDisplay, true)
+                        || matchesKey(identity.display, preferredDisplay, true);
+            case 1:
+                return matchesKey(identity.name, preferredName, false)
+                        || matchesKey(identity.display, preferredName, false)
+                        || matchesKey(identity.name, preferredDisplay, false)
+                        || matchesKey(identity.display, preferredDisplay, false);
+            case 2:
+                return matchesKey(identity.name, baseName, true)
+                        || matchesKey(identity.display, baseName, true);
+            case 3:
+                return matchesKey(identity.name, baseName, false)
+                        || matchesKey(identity.display, baseName, false);
+            default:
+                return false;
+        }
+    }
+
+    private boolean matchesKey(String candidate, String reference, boolean exact) {
+        if (candidate == null || candidate.isEmpty() || reference == null || reference.isEmpty()) return false;
+        if (exact) return candidate.equals(reference);
+        return candidate.startsWith(reference) || reference.startsWith(candidate);
+    }
+
+    private KitIdentity extractKitIdentity(Object entry) {
+        if (entry == null) return new KitIdentity("", "");
+        if (entry instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) entry;
+            String name = map.containsKey("name") ? normalizeLayoutKey(String.valueOf(map.get("name"))) : "";
+            ItemStack icon = map.get("icon") instanceof ItemStack ? (ItemStack) map.get("icon") : null;
+            return new KitIdentity(name, extractItemDisplayName(icon));
+        }
+        return new KitIdentity(
+                normalizeLayoutKey(getBattleKitName(entry)),
+                extractItemDisplayName(getBattleKitIcon(entry))
+        );
+    }
+
     @SuppressWarnings("unchecked")
-    public void applyStartKit(Player p, Object fight) {
-        if (!isHooked() || hook.getMGetKit() == null || hook.getAPI() == null) return;
-
-        boolean isPartyFight = fight != null
-                && ((partySplitManager   != null && partySplitManager.isPartySplit(fight))
-                ||  (partyVsPartyManager != null && partyVsPartyManager.isPartyVsParty(fight)));
-
-        if (!isPartyFight) {
-            applyStartKit(p);
-            return;
+    private List<ItemStack> extractInventory(Object entry) {
+        if (entry == null) return null;
+        if (entry instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) entry;
+            if (map.get("inventory") instanceof List) return (List<ItemStack>) map.get("inventory");
+            return null;
         }
 
         try {
-            org.bukkit.Color teamColor = teamColorUtil.getTeamColor(p, fight);
-
-            Object baseKit = null;
-            try { baseKit = hook.getMGetKit().invoke(hook.getAPI(), p); } catch (Exception ignored) {}
-            if (baseKit == null) {
-                try { baseKit = fight.getClass().getMethod("getKit").invoke(fight); } catch (Exception ignored) {}
-            }
-            if (baseKit == null) {
-                List<Player> allFightPlayers = new ArrayList<>();
-                if (partySplitManager != null && partySplitManager.isPartySplit(fight)) {
-                    allFightPlayers = partySplitManager.getAllPlayers(fight);
-                } else if (partyVsPartyManager != null && partyVsPartyManager.isPartyVsParty(fight)) {
-                    allFightPlayers = partyVsPartyManager.getAllPlayers(fight);
-                }
-                for (Player ref : allFightPlayers) {
-                    if (ref.getUniqueId().equals(p.getUniqueId())) continue;
-                    try {
-                        baseKit = hook.getMGetKit().invoke(hook.getAPI(), ref);
-                        if (baseKit != null) break;
-                    } catch (Exception ignored) {}
-                }
-            }
-            if (baseKit == null) return;
-
-            String baseName = ChatColor.stripColor(
-                    (String) baseKit.getClass().getMethod("getName").invoke(baseKit)).toLowerCase();
-            ItemStack baseIcon = null;
-            try { baseIcon = (ItemStack) hook.mBattleKitGetIcon.invoke(baseKit); } catch (Exception ignored) {}
-            String baseIconName = (baseIcon != null && baseIcon.hasItemMeta() && baseIcon.getItemMeta().hasDisplayName())
-                    ? ChatColor.stripColor(baseIcon.getItemMeta().getDisplayName()).toLowerCase() : null;
-
-            Object playerKit = null;
-
-            if (hook.mBattleKitGetKitStatic != null && baseIcon != null) {
-                try {
-                    playerKit = hook.mBattleKitGetKitStatic.invoke(null, p, baseIcon, false);
-                } catch (Exception e1) {
-                    try {
-                        playerKit = hook.mBattleKitGetKitStatic.invoke(baseKit, p, baseIcon, false);
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            if (playerKit == null) {
-                try {
-                    java.lang.reflect.Method mLast = hook.getMGetLastSelectedEditedKit();
-                    if (mLast != null) {
-                        Object lastKit = mLast.invoke(hook.getAPI(), p);
-                        if (lastKit != null) {
-                            String lastKitName = ChatColor.stripColor(
-                                    (String) lastKit.getClass().getMethod("getName").invoke(lastKit)).toLowerCase();
-                            if (lastKitName.contains(baseName) || baseName.contains(lastKitName.replaceAll("-?\\d+$", ""))) {
-                                playerKit = lastKit;
-                            }
-                        }
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            Object kitForInv = (playerKit != null) ? playerKit : baseKit;
-
-            List<ItemStack> kitInv = null;
             if (hook.mBattleKitGetInv != null) {
-                try {
-                    Object raw = hook.mBattleKitGetInv.invoke(kitForInv);
-                    if (raw instanceof List) kitInv = (List<ItemStack>) raw;
-                    else if (raw instanceof ItemStack[]) kitInv = java.util.Arrays.asList((ItemStack[]) raw);
-                } catch (Exception ignored) {}
+                Object raw = hook.mBattleKitGetInv.invoke(entry);
+                if (raw instanceof List) return (List<ItemStack>) raw;
+                if (raw instanceof ItemStack[]) return Arrays.asList((ItemStack[]) raw);
             }
-
-            ItemStack helmet = null, chest = null, legs = null, boots = null;
-            Object kitForArmor = (playerKit != null) ? playerKit : baseKit;
-            try {
-                if (hook.mBattleKitGetHelmet     != null) helmet = (ItemStack) hook.mBattleKitGetHelmet.invoke(kitForArmor);
-                if (hook.mBattleKitGetChestplate != null) chest  = (ItemStack) hook.mBattleKitGetChestplate.invoke(kitForArmor);
-                if (hook.mBattleKitGetLeggings   != null) legs   = (ItemStack) hook.mBattleKitGetLeggings.invoke(kitForArmor);
-                if (hook.mBattleKitGetBoots      != null) boots  = (ItemStack) hook.mBattleKitGetBoots.invoke(kitForArmor);
-            } catch (Exception ignored) {}
-            if (helmet == null && chest == null && legs == null && boots == null && playerKit != null) {
-                try {
-                    if (hook.mBattleKitGetHelmet     != null) helmet = (ItemStack) hook.mBattleKitGetHelmet.invoke(baseKit);
-                    if (hook.mBattleKitGetChestplate != null) chest  = (ItemStack) hook.mBattleKitGetChestplate.invoke(baseKit);
-                    if (hook.mBattleKitGetLeggings   != null) legs   = (ItemStack) hook.mBattleKitGetLeggings.invoke(baseKit);
-                    if (hook.mBattleKitGetBoots      != null) boots  = (ItemStack) hook.mBattleKitGetBoots.invoke(baseKit);
-                } catch (Exception ignored) {}
-            }
-
-            p.getInventory().clear();
-            p.getInventory().setArmorContents(new org.bukkit.inventory.ItemStack[4]);
-
-            if (kitInv != null && !kitInv.isEmpty()) {
-                ItemStack[] contents = new ItemStack[p.getInventory().getContents().length];
-                for (int i = 0; i < kitInv.size() && i < contents.length; i++) {
-                    ItemStack item = kitInv.get(i);
-                    if (item != null && item.getType() != org.bukkit.Material.AIR) {
-                        contents[i] = item.clone();
-                    }
-                }
-                p.getInventory().setContents(contents);
-            } else {
-                Object kitToGive = (playerKit != null) ? playerKit : baseKit;
-                if (hook.mBattleKitGiveKit != null) {
-                    try { hook.mBattleKitGiveKit.invoke(kitToGive, p); } catch (Exception ignored) {}
-                } else if (hook.getMKitApply() != null) {
-                    try { hook.getMKitApply().invoke(kitToGive, p); } catch (Exception ignored) {}
-                }
-            }
-            p.updateInventory();
-
-            {
-                List<Object> allKits = new ArrayList<>();
-                File spFolder = new File(getDataFolder().getParentFile(), "StrikePractice");
-                File pdFile   = new File(spFolder, "playerdata/" + p.getUniqueId() + ".yml");
-                if (pdFile.exists()) {
-                    List<?> spKits = YamlConfiguration.loadConfiguration(pdFile).getList("kits");
-                    if (spKits != null) allKits.addAll(spKits);
-                }
-                File pixFile = new File(getDataFolder(), "layouts/" + p.getUniqueId() + ".yml");
-                if (pixFile.exists()) {
-                    List<?> pixKits = YamlConfiguration.loadConfiguration(pixFile).getList("kits");
-                    if (pixKits != null) {
-                        for (int i = pixKits.size() - 1; i >= 0; i--) allKits.add(0, pixKits.get(i));
-                    }
-                }
-
-                if (!allKits.isEmpty()) {
-                    for (Object customKit : allKits) {
-                        if (customKit == null) continue;
-                        boolean isMatch = false;
-                        List<ItemStack> yamlInv = null;
-
-                        if (!Map.class.isAssignableFrom(customKit.getClass())) {
-                            ItemStack icon = null;
-                            try { icon = (ItemStack) hook.mBattleKitGetIcon.invoke(customKit); } catch (Exception ignored) {}
-                            String dName = (icon != null && icon.hasItemMeta() && icon.getItemMeta().hasDisplayName())
-                                    ? ChatColor.stripColor(icon.getItemMeta().getDisplayName()).toLowerCase() : "";
-                            String kName = "";
-                            try { kName = ChatColor.stripColor((String) customKit.getClass().getMethod("getName").invoke(customKit)).toLowerCase(); } catch (Exception ignored) {}
-                            if (dName.contains(baseName) || kName.contains(baseName)) {
-                                isMatch = true;
-                                if (hook.mBattleKitGetInv != null) {
-                                    try {
-                                        Object raw = hook.mBattleKitGetInv.invoke(customKit);
-                                        if (raw instanceof List) yamlInv = (List<ItemStack>) raw;
-                                        else if (raw instanceof ItemStack[]) yamlInv = java.util.Arrays.asList((ItemStack[]) raw);
-                                    } catch (Exception ignored) {}
-                                }
-                                if (yamlInv == null) {
-                                    try { yamlInv = (List<ItemStack>) customKit.getClass().getMethod("getInventory").invoke(customKit); }
-                                    catch (Exception ignored) {}
-                                }
-                            }
-                        } else {
-                            Map<?, ?> map  = (Map<?, ?>) customKit;
-                            ItemStack icon = map.get("icon") instanceof ItemStack ? (ItemStack) map.get("icon") : null;
-                            String dName   = (icon != null && icon.hasItemMeta() && icon.getItemMeta().hasDisplayName())
-                                    ? ChatColor.stripColor(icon.getItemMeta().getDisplayName()).toLowerCase() : "";
-                            String kName   = map.containsKey("name") ? ChatColor.stripColor(String.valueOf(map.get("name"))).toLowerCase() : "";
-                            if (dName.contains(baseName) || kName.contains(baseName)) {
-                                isMatch = true;
-                                if (map.get("inventory") instanceof List) yamlInv = (List<ItemStack>) map.get("inventory");
-                            }
-                        }
-
-                        if (isMatch && yamlInv != null) {
-                            ItemStack[]     current      = p.getInventory().getContents();
-                            List<ItemStack> pool         = new ArrayList<>();
-                            final String    finalIconName = baseIconName;
-                            for (int i = 0; i < 36 && i < current.length; i++) {
-                                ItemStack item = current[i];
-                                if (item == null || item.getType() == org.bukkit.Material.AIR) continue;
-                                if (!isLobbyItem(item, finalIconName)) pool.add(item.clone());
-                            }
-                            ItemStack[] newContents = new ItemStack[current.length];
-                            for (int i = 0; i < yamlInv.size() && i < newContents.length; i++) {
-                                ItemStack target = yamlInv.get(i);
-                                if (target == null || target.getType() == org.bukkit.Material.AIR) continue;
-                                ItemStack matched = null;
-                                for (int j = 0; j < pool.size(); j++) {
-                                    if (teamColorUtil.isItemMatch(target, pool.get(j))) { matched = pool.remove(j); break; }
-                                }
-                                if (matched != null) newContents[i] = matched;
-                                else if (!isLobbyItem(target, finalIconName)) newContents[i] = target.clone();
-                            }
-                            for (ItemStack leftover : pool) {
-                                for (int i = 0; i < newContents.length; i++) {
-                                    if (newContents[i] == null) { newContents[i] = leftover; break; }
-                                }
-                            }
-                            p.getInventory().setContents(newContents);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            ItemStack[] contents = p.getInventory().getContents();
-            for (int i = 0; i < contents.length; i++) {
-                ItemStack item = contents[i];
-                if (item == null || item.getType() == org.bukkit.Material.AIR) continue;
-                if (isLobbyItem(item, baseIconName)) contents[i] = null;
-                else teamColorUtil.colorItem(item, teamColor);
-            }
-            p.getInventory().setContents(contents);
-
-            ItemStack[] armor = new ItemStack[4];
-            armor[0] = (boots  != null) ? boots.clone()  : p.getInventory().getBoots();
-            armor[1] = (legs   != null) ? legs.clone()   : p.getInventory().getLeggings();
-            armor[2] = (chest  != null) ? chest.clone()  : p.getInventory().getChestplate();
-            armor[3] = (helmet != null) ? helmet.clone() : p.getInventory().getHelmet();
-            for (ItemStack a : armor) teamColorUtil.colorItem(a, teamColor);
-            p.getInventory().setArmorContents(armor);
-            p.updateInventory();
-
-        } catch (Exception e) { e.printStackTrace(); }
+            Object raw = entry.getClass().getMethod("getInventory").invoke(entry);
+            if (raw instanceof List) return (List<ItemStack>) raw;
+        } catch (Exception ignored) {}
+        return null;
     }
 
-    public void applyKit(Player p) { applyStartKit(p); }
+    private List<ItemStack> findLayoutMatch(List<?> kits, String baseName, Object preferredKit) {
+        if (kits == null || kits.isEmpty()) return null;
+        for (int pass = 0; pass < 4; pass++) {
+            for (Object customKit : kits) {
+                if (customKit == null || !matchesKitEntry(customKit, baseName, preferredKit, pass)) continue;
+                List<ItemStack> inventory = extractInventory(customKit);
+                if (inventory != null) return inventory;
+            }
+        }
+        return null;
+    }
+
+    private static final class StoredLayoutSnapshot {
+        private final List<ItemStack> inventory;
+        private final long lastModified;
+
+        private StoredLayoutSnapshot(List<ItemStack> inventory, long lastModified) {
+            this.inventory = inventory;
+            this.lastModified = lastModified;
+        }
+    }
+
+    private static final class KitIdentity {
+        private final String name;
+        private final String display;
+
+        private KitIdentity(String name, String display) {
+            this.name = name != null ? name : "";
+            this.display = display != null ? display : "";
+        }
+    }
 }

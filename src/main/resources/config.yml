@@ -1,5 +1,4 @@
 messages:
-
   victory:
     title: "&e&lVICTORY!"
     subtitle: "&e<player> &fwon the Match!"
@@ -7,7 +6,7 @@ messages:
     title: "&c&lDEFEAT!"
     subtitle: "&c<opponent> &fwon this Match!"
   death:
-    title: "&cYOU DIED!"
+    title: "&c&lYOU DIED!"
     subtitle-countdown: "&eRespawning in &d<seconds>s&e..."
   scored:
     title: "&e&l<player>"
@@ -19,16 +18,10 @@ messages:
     red-wins:
       title: "&c&lRED WINS!"
       subtitle: "&c<red_score> &8- &9<blue_score>"
-  party:
-    victory:
-      title: "&e&lVICTORY!"
-      subtitle: "&fYour team won the Match!"
-    defeat:
-      title: "&c&lDEFEAT!"
-      subtitle: "&c<opponent_leader> &fwon this Match!"
   bed-break-self: "&cYou can't break your own bed!"
   block-place-denied: "&cYou cannot place blocks while respawning!"
   block-place-denied-start: "&cYou cannot place blocks while the match is starting!"
+  block-place-denied-start-round: "&cYou cannot place blocks while the round is starting!"
   block-break-denied-start: "&cYou cannot break blocks while the match is starting!"
   build-limit-reached: "&cYou cannot place block at there!"
   build-outside-arena: "&cYou cannot place block outside the arena!"
@@ -50,6 +43,7 @@ messages:
   bed-destroyed-subtitle: "&fYou will no longer respawn!"
 
 settings:
+  bridge-score-limit: 5
   bridge-party-score-limit: 5
   default-respawn-time: 3
   respawn-countdown-interval: 20
@@ -74,12 +68,7 @@ settings:
     animation-tick-interval: 5 # speed animation break (semakin kecil semakin cepat)
     play-sound: true
   build-restrictions: # corner
-    enabled: false
-    max-build-y: 100
-    check-arena-borders: false # jangan lupa di ubah jadi true
-    kits:
-      - "thebridge"
-      - "bedfight"
+    enabled: true
   respawn-sound: "ORB_PICKUP"
   death: # disable respawn di dalam arena/kits (WAJIB DISINI JIKA TIDAK MAKA AKAN RESPAWN DENGAN SENDIRINYA)
     disabled-kits:
@@ -171,7 +160,7 @@ settings:
         "1": "&a1"
   bow-cooldown:
     enabled: true
-    seconds: 5 # ONLY SEC
+    seconds: 4 # ONLY SEC
     kits:
       - thebridge
       - thebridgeelo
@@ -225,6 +214,7 @@ settings:
       - "thebridgeelo"
       - "mlgrush"
       - "battlerush"
+      #tambahin kits yang berupa bestof
   bed-restore-kits:
     - "bedfight"
     - "fireballfight"

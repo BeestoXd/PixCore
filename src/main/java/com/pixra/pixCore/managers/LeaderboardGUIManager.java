@@ -17,6 +17,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import me.clip.placeholderapi.PlaceholderAPI;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -71,8 +73,8 @@ public class LeaderboardGUIManager implements Listener {
         if (!guiConfig.contains("gui-settings.page-3-support")) {
             guiConfig.set("gui-settings.page-3-support", true);
 
-            guiConfig.set("gui-settings.winstreak-daily.name", "&b&lDAILY WINSTREAK");
-            guiConfig.set("gui-settings.winstreak-daily.lore", "&7Click to view Daily Winstreak");
+            guiConfig.set("gui-settings.winstreak-daily.name", "&b&lDAILY STREAK");
+            guiConfig.set("gui-settings.winstreak-daily.lore", "&7Click to view Daily Streak");
             guiConfig.set("gui-settings.winstreak-daily.slot", 22);
             guiConfig.set("gui-settings.winstreak-daily.material", "NAME_TAG");
 
@@ -277,7 +279,8 @@ public class LeaderboardGUIManager implements Listener {
                     String color = rank == 1 ? "&a" : (rank == 2 ? "&e" : (rank == 3 ? "&6" : "&f"));
                     if (i < top10.size()) {
                         Map.Entry<String, Integer> entry = top10.get(i);
-                        lore.add(ChatColor.translateAlternateColorCodes('&', color + rank + ". &f" + entry.getKey() + " &7- &d" + entry.getValue() + " " + suffix));
+                        String pName = entry.getKey();
+                        lore.add(ChatColor.translateAlternateColorCodes('&', color + rank + ". " + resolvePrefix(pName) + "&f" + pName + "&r " + resolveTag(pName) + "&r &7- &d" + entry.getValue() + " " + suffix));
                     } else {
                         lore.add(ChatColor.translateAlternateColorCodes('&', color + rank + ". &7&o---"));
                     }
@@ -302,6 +305,28 @@ public class LeaderboardGUIManager implements Listener {
 
         inv.setItem(guiConfig.getInt("gui-settings.back.slot", 48), createConfigItem("gui-settings.back"));
         inv.setItem(guiConfig.getInt("gui-settings.period-close.slot", 50), createConfigItem("gui-settings.period-close"));
+    }
+
+    private String resolvePrefix(String playerName) {
+        Player online = Bukkit.getPlayerExact(playerName);
+        if (online != null && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            String lp = PlaceholderAPI.setPlaceholders(online, "%luckperms_prefix%");
+            String result = "%luckperms_prefix%".equals(lp) ? "" : lp;
+            plugin.prefixCache.put(playerName, result);
+            return result;
+        }
+        return plugin.prefixCache.getOrDefault(playerName, "");
+    }
+
+    private String resolveTag(String playerName) {
+        Player online = Bukkit.getPlayerExact(playerName);
+        if (online != null && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            String tag = PlaceholderAPI.setPlaceholders(online, "%deluxetags_tag%");
+            String result = "%deluxetags_tag%".equals(tag) ? "" : tag;
+            plugin.tagCache.put(playerName, result);
+            return result;
+        }
+        return plugin.tagCache.getOrDefault(playerName, "");
     }
 
     private ItemStack createItem(Material mat, int data, String name, String loreLine) {

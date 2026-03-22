@@ -15,9 +15,10 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
+import me.clip.placeholderapi.PlaceholderAPI;
+
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.*;
 
@@ -40,8 +41,8 @@ public class HologramManager {
     private File standingCfgFile;
     private FileConfiguration standingCfg;
 
-    private static final double FORWARD = 4.0;
-    private static final double SIDE = 3.0;
+    private static final double FORWARD = 3.0;
+    private static final double SIDE = 2.5;
     private static final double LINE_GAP = -0.27;
     private static final int LINES_PLAYER = 8;
     private static final int LINES_STAND = 13;
@@ -214,14 +215,13 @@ public class HologramManager {
         if (!plugin.leaderboardManager.isKitEnabled(kitName))
             return;
 
-        hideForPlayer(player);
+        despawnList(playerHolograms.remove(player.getUniqueId()));
 
         Location eye = player.getEyeLocation();
         Vector dir = eye.getDirection().clone().setY(0);
         if (dir.lengthSquared() < 0.001)
             dir = new Vector(0, 0, 1);
         dir.normalize();
-
         Location anchor = eye.clone().add(dir.clone().multiply(FORWARD));
         anchor.setY(eye.getY() + 1.2);
 
@@ -229,13 +229,26 @@ public class HologramManager {
         Vector right = new Vector(dir.getZ(), 0, -dir.getX()).normalize().multiply(SIDE);
 
         List<ArmorStand> stands = new ArrayList<>();
-        stands.addAll(spawnColumnForPlayer(anchor.clone().add(left), buildPlayerLeft(kitName), LINES_PLAYER, player));
-        stands.addAll(spawnColumnForPlayer(anchor.clone().add(right), buildPlayerRight(kitName), LINES_PLAYER, player));
+        stands.addAll(spawnColumnForPlayer(anchor.clone().add(right), buildPlayerLeft(kitName), LINES_PLAYER, player));
+        stands.addAll(spawnColumnForPlayer(anchor.clone().add(left), buildPlayerRight(kitName), LINES_PLAYER, player));
         playerHolograms.put(player.getUniqueId(), stands);
     }
 
     public void hideForPlayer(Player player) {
         despawnList(playerHolograms.remove(player.getUniqueId()));
+    }
+
+    public void clearPlayerHologram(Player player) {
+        hideForPlayer(player);
+    }
+
+    public void clearPlayerHologram(UUID uuid) {
+        despawnList(playerHolograms.remove(uuid));
+    }
+
+    public boolean hasPlayerHologram(Player player) {
+        List<ArmorStand> stands = playerHolograms.get(player.getUniqueId());
+        return stands != null && !stands.isEmpty();
     }
 
     public void removeAllHolograms() {
@@ -266,7 +279,7 @@ public class HologramManager {
             return false;
         }
         if (category.equals("ws") && !period.equals("daily")) {
-            admin.sendMessage(color("&cWinstreak &e(ws)&c only supports period &edaily&c."));
+            admin.sendMessage(color("&cDaily Streak &e(ws)&c only supports period &edaily&c."));
             return false;
         }
 
@@ -463,7 +476,7 @@ public class HologramManager {
 
     private List<String> buildPlayerLeft(String kit) {
         List<String> lines = new ArrayList<>();
-        lines.add("&b&l✦ DAILY WINSTREAK ✦");
+        lines.add("&b&l✦ DAILY STREAK ✦");
         lines.add("&eKit: &f" + kit.toUpperCase());
         lines.add("&7Resets in: &c" + plugin.leaderboardManager.getDailyCountdown());
         lines.addAll(topN(plugin.leaderboardManager.getTop("winstreak", "daily", kit, 5), 5));
@@ -486,8 +499,8 @@ public class HologramManager {
         switch (category) {
             case "ws":
                 titleColor = "&b";
-                titleLabel = "✦ WINSTREAK ✦";
-                categoryLabel = "Winstreak";
+                titleLabel = "✦ DAILY STREAK ✦";
+                categoryLabel = "Daily Streak";
                 break;
             case "wins":
                 titleColor = "&a";
@@ -540,12 +553,35 @@ public class HologramManager {
             String ic = i < icons.length ? icons[i] : "  ";
             if (i < top.size()) {
                 Map.Entry<String, Integer> e = top.get(i);
-                lines.add(c + ic + (i + 1) + ". &f" + e.getKey() + " &8- &d" + e.getValue());
+                String pName = e.getKey();
+                lines.add(c + ic + (i + 1) + ". " + resolvePrefix(pName) + "&f" + pName + "&r " + resolveTag(pName) + "&r &8- &d" + e.getValue());
             } else {
                 lines.add(c + (i + 1) + ". &8&o-");
             }
         }
         return lines;
+    }
+
+    private String resolvePrefix(String playerName) {
+        Player online = Bukkit.getPlayerExact(playerName);
+        if (online != null && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            String lp = PlaceholderAPI.setPlaceholders(online, "%luckperms_prefix%");
+            String result = "%luckperms_prefix%".equals(lp) ? "" : lp;
+            plugin.prefixCache.put(playerName, result);
+            return result;
+        }
+        return plugin.prefixCache.getOrDefault(playerName, "");
+    }
+
+    private String resolveTag(String playerName) {
+        Player online = Bukkit.getPlayerExact(playerName);
+        if (online != null && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            String tag = PlaceholderAPI.setPlaceholders(online, "%deluxetags_tag%");
+            String result = "%deluxetags_tag%".equals(tag) ? "" : tag;
+            plugin.tagCache.put(playerName, result);
+            return result;
+        }
+        return plugin.tagCache.getOrDefault(playerName, "");
     }
 
     private List<String> padTo(List<String> lines, int size) {
@@ -579,81 +615,146 @@ public class HologramManager {
             }
             stands.add(as);
             if (owner != null) {
-                sendDestroyPacketToOthers(as, owner);
+                showOnlyFor(as, owner);
             }
             cur = cur.clone().add(0, LINE_GAP, 0);
         }
         return stands;
     }
 
+    private void showOnlyFor(ArmorStand as, Player owner) {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getUniqueId().equals(owner.getUniqueId())) continue;
+            boolean hidden = false;
+            try {
+                p.hideEntity(plugin, as);
+                hidden = true;
+            } catch (NoSuchMethodError | Exception ignored) {}
+            if (!hidden) {
+                sendDestroyPacketToPlayer(as, p);
+            }
+        }
+        try {
+            owner.showEntity(plugin, as);
+        } catch (NoSuchMethodError | Exception ignored) {
+        }
+    }
+
+    private void hideFromOthers(ArmorStand as, Player owner) {
+        for (Player other : Bukkit.getOnlinePlayers()) {
+            if (other.getUniqueId().equals(owner.getUniqueId())) continue;
+            try {
+                other.hideEntity(plugin, as);
+            } catch (NoSuchMethodError | Exception ignored) {
+                sendDestroyPacketToOthers(as, owner);
+                return;
+            }
+        }
+    }
+
+    public void reHideAllFromPlayer(Player viewer) {
+        UUID viewerUuid = viewer.getUniqueId();
+        for (Map.Entry<UUID, List<ArmorStand>> entry : new HashMap<>(playerHolograms).entrySet()) {
+            if (entry.getKey().equals(viewerUuid)) continue;
+            List<ArmorStand> stands = entry.getValue();
+            if (stands == null) continue;
+            for (ArmorStand as : stands) {
+                if (as == null || as.isDead()) continue;
+                try {
+                    viewer.hideEntity(plugin, as);
+                } catch (NoSuchMethodError | Exception ignored) {
+                    sendDestroyPacketToPlayer(as, viewer);
+                }
+            }
+        }
+    }
+
     private void sendDestroyPacketToOthers(ArmorStand as, Player owner) {
         try {
             int entityId = as.getEntityId();
-
             String version = Bukkit.getServer().getClass().getPackage().getName().split("\\.")[3];
-            Class<?> packetClass;
-            Object packet;
+            Object packet = buildDestroyPacket(entityId, version);
+            if (packet == null) return;
+            for (Player other : Bukkit.getOnlinePlayers()) {
+                if (other.getUniqueId().equals(owner.getUniqueId())) continue;
+                sendRawPacketToPlayer(packet, other, version);
+            }
+        } catch (Exception ignored) {
+        }
+    }
 
+    private void sendDestroyPacketToPlayer(ArmorStand as, Player target) {
+        try {
+            int entityId = as.getEntityId();
+            String version = Bukkit.getServer().getClass().getPackage().getName().split("\\.")[3];
+            Object packet = buildDestroyPacket(entityId, version);
+            if (packet == null) return;
+            sendRawPacketToPlayer(packet, target, version);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private Object buildDestroyPacket(int entityId, String version) {
+        try {
+            Class<?> packetClass;
             try {
                 packetClass = Class.forName("net.minecraft.network.protocol.game.PacketPlayOutEntityDestroy");
-                try {
-                    packet = packetClass.getConstructor(int.class).newInstance(entityId);
-                } catch (NoSuchMethodException e) {
-                    packet = packetClass.getConstructor(int[].class).newInstance((Object) new int[] { entityId });
-                }
             } catch (ClassNotFoundException ex) {
                 packetClass = Class.forName("net.minecraft.server." + version + ".PacketPlayOutEntityDestroy");
-                packet = packetClass.getConstructor(int[].class).newInstance((Object) new int[] { entityId });
             }
+            try {
+                return packetClass.getConstructor(int.class).newInstance(entityId);
+            } catch (NoSuchMethodException e) {
+                return packetClass.getConstructor(int[].class).newInstance((Object) new int[] { entityId });
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
 
-            for (Player other : Bukkit.getOnlinePlayers()) {
-                if (other.getUniqueId().equals(owner.getUniqueId()))
-                    continue;
-                try {
-                    Object craftPlayer = other.getClass().getMethod("getHandle").invoke(other);
-                    Object playerConn = craftPlayer.getClass().getField("playerConnection").get(craftPlayer);
-                    playerConn.getClass().getMethod("sendPacket", getPacketClass(version)).invoke(playerConn, packet);
-                } catch (Exception e2) {
-                    try {
-                        Object craftPlayer = other.getClass().getMethod("getHandle").invoke(other);
-                        Object conn = null;
-                        for (java.lang.reflect.Field f : craftPlayer.getClass().getFields()) {
+    private void sendRawPacketToPlayer(Object packet, Player target, String version) {
+        try {
+            Object craftPlayer = target.getClass().getMethod("getHandle").invoke(target);
+            Object playerConn = craftPlayer.getClass().getField("playerConnection").get(craftPlayer);
+            playerConn.getClass().getMethod("sendPacket", getPacketClass(version)).invoke(playerConn, packet);
+        } catch (Exception e2) {
+            try {
+                Object craftPlayer = target.getClass().getMethod("getHandle").invoke(target);
+                Object conn = null;
+                for (java.lang.reflect.Field f : craftPlayer.getClass().getFields()) {
+                    String fname = f.getType().getSimpleName();
+                    if (fname.equals("PlayerConnection") || fname.equals("ServerGamePacketListenerImpl")) {
+                        conn = f.get(craftPlayer);
+                        break;
+                    }
+                }
+                if (conn == null) {
+                    Class<?> cls = craftPlayer.getClass();
+                    outer: while (cls != null) {
+                        for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
+                            f.setAccessible(true);
                             String fname = f.getType().getSimpleName();
-                            if (fname.equals("PlayerConnection") || fname.equals("ServerGamePacketListenerImpl")) {
+                            if (fname.equals("PlayerConnection")
+                                    || fname.equals("ServerGamePacketListenerImpl")) {
                                 conn = f.get(craftPlayer);
+                                break outer;
+                            }
+                        }
+                        cls = cls.getSuperclass();
+                    }
+                }
+                if (conn != null) {
+                    for (Method m : conn.getClass().getMethods()) {
+                        if (m.getName().equals("sendPacket") || m.getName().equals("send")) {
+                            if (m.getParameterCount() == 1) {
+                                m.invoke(conn, packet);
                                 break;
                             }
                         }
-                        if (conn == null) {
-                            Class<?> cls = craftPlayer.getClass();
-                            outer: while (cls != null) {
-                                for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
-                                    f.setAccessible(true);
-                                    String fname = f.getType().getSimpleName();
-                                    if (fname.equals("PlayerConnection")
-                                            || fname.equals("ServerGamePacketListenerImpl")) {
-                                        conn = f.get(craftPlayer);
-                                        break outer;
-                                    }
-                                }
-                                cls = cls.getSuperclass();
-                            }
-                        }
-                        if (conn != null) {
-                            for (Method m : conn.getClass().getMethods()) {
-                                if (m.getName().equals("sendPacket") || m.getName().equals("send")) {
-                                    if (m.getParameterCount() == 1) {
-                                        m.invoke(conn, packet);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    } catch (Exception ignored) {
                     }
                 }
+            } catch (Exception ignored) {
             }
-        } catch (Exception ignored) {
         }
     }
 
@@ -713,7 +814,7 @@ public class HologramManager {
                     continue;
                 String n = as.getCustomName();
                 if (n == null || n.trim().isEmpty()
-                        || n.contains("WINSTREAK") || n.contains("TOP WINS") || n.contains("TOP KILLS")
+                        || n.contains("DAILY STREAK") || n.contains("WINSTREAK") || n.contains("TOP WINS") || n.contains("TOP KILLS")
                         || n.contains("Kit:") || n.contains("Resets in:") || n.contains("Lifetime")
                         || n.contains("✦") || n.contains("⚑") || n.contains("★"))
                     as.remove();
@@ -747,7 +848,7 @@ public class HologramManager {
                     switch (category) {
                         case "ws":
                             titleColor = "&b";
-                            titleLabel = "✦ WINSTREAK ✦";
+                            titleLabel = "✦ DAILY STREAK ✦";
                             break;
                         case "wins":
                             titleColor = "&a";
@@ -763,6 +864,25 @@ public class HologramManager {
                             color(buildGlowTitle(periodLabel + " " + titleLabel, titleColor, glowFrame)));
                 }
 
+                if (glowFrame % 20 == 0) {
+                    for (Map.Entry<UUID, List<ArmorStand>> rehideEntry : new HashMap<>(playerHolograms).entrySet()) {
+                        UUID ownerUUID = rehideEntry.getKey();
+                        List<ArmorStand> hStands = rehideEntry.getValue();
+                        if (hStands == null) continue;
+                        for (ArmorStand hAs : hStands) {
+                            if (hAs == null || hAs.isDead()) continue;
+                            for (Player viewer : Bukkit.getOnlinePlayers()) {
+                                if (viewer.getUniqueId().equals(ownerUUID)) continue;
+                                try {
+                                    viewer.hideEntity(plugin, hAs);
+                                } catch (NoSuchMethodError | Exception ignored) {
+                                    sendDestroyPacketToPlayer(hAs, viewer);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 for (List<ArmorStand> stands : new ArrayList<>(playerHolograms.values())) {
                     if (stands == null || stands.size() < LINES_PLAYER + 1)
                         continue;
@@ -771,7 +891,7 @@ public class HologramManager {
                     ArmorStand rightTitle = stands.get(LINES_PLAYER);
 
                     if (leftTitle != null && !leftTitle.isDead())
-                        leftTitle.setCustomName(color(buildGlowTitle("✦ DAILY WINSTREAK ✦", "&b", glowFrame)));
+                        leftTitle.setCustomName(color(buildGlowTitle("✦ DAILY STREAK ✦", "&b", glowFrame)));
                     if (rightTitle != null && !rightTitle.isDead())
                         rightTitle.setCustomName(color(buildGlowTitle("✦ MONTHLY TOP WINS ✦", "&6", glowFrame)));
                 }

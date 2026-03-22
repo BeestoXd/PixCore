@@ -1,43 +1,41 @@
-enabled: true
-use-default-if-missing: true
+# ============================================================
+# FIREBALL KNOCKBACK (FireballFight / FireballFightElo)
+# ============================================================
+# Ganti vanilla fireball KB yang tidak konsisten (bisa 0 atau 25)
+# dengan nilai yang stabil dan bisa dikustomisasi.
+#
+# horizontal      : Kecepatan horizontal KB (blok/tick)
+# vertical        : Kecepatan vertikal saat di tanah
+# vertical-limit  : Batas maksimum kecepatan vertikal saat di udara
+# min-horizontal  : Minimum horizontal agar KB tidak pernah terlalu lemah
+# ============================================================
+fireball-knockback:
+  enabled: true
+  kits:
+    - fireballfight
+    - fireballfightelo
+  horizontal: 1.25
+  vertical: 0.50
+  vertical-limit: 1.05
+  min-horizontal: 0.80
 
-default:
-  friction: 2.0
-  horizontal: 0.39
-  vertical: 0.34
-  vertical-limit: 0.38
-  sprint-multiplier: 1.15
-  horizontal-cap: 0.62
-
-kits:
-  Nodebuff:
-    friction: 2.0
-    horizontal: 0.395
-    vertical: 0.34
-    vertical-limit: 0.38
-    sprint-multiplier: 1.18
-    horizontal-cap: 0.62
-
-  Sumo:
-    friction: 2.0
-    horizontal: 0.37
-    vertical: 0.40
-    vertical-limit: 0.45
-    sprint-multiplier: 1.08
-    horizontal-cap: 0.65
-
-  Boxing:
-    friction: 2.0
-    horizontal: 0.41
-    vertical: 0.32
-    vertical-limit: 0.35
-    sprint-multiplier: 1.20
-    horizontal-cap: 0.60
-
-  BedFight:
-    friction: 2.0
-    horizontal: 0.385
-    vertical: 0.35
-    vertical-limit: 0.40
-    sprint-multiplier: 1.12
-    horizontal-cap: 0.62
+# ============================================================
+# TNT SELF-KNOCKBACK (tanpa damage, hanya knockback)
+# ============================================================
+# Berlaku saat player meledakkan TNT-nya sendiri (self-hit).
+# Damage dibatalkan, hanya knockback yang diterapkan.
+#
+# horizontal      : Kecepatan horizontal KB
+# vertical        : Kecepatan vertikal saat di tanah
+# vertical-limit  : Batas maksimum kecepatan vertikal saat di udara
+# min-horizontal  : Minimum horizontal agar KB tidak terlalu lemah
+# ============================================================
+tnt-self-knockback:
+  enabled: true
+  kits:
+    - fireballfight
+    - fireballfightelo
+  horizontal: 1.35
+  vertical: 0.60
+  vertical-limit: 1.05
+  min-horizontal: 0.80

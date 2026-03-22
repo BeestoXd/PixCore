@@ -22,18 +22,7 @@ public class CountdownManager {
         for (Player p : players) {
             if (p == null || !p.isOnline()) continue;
             plugin.frozenPlayers.add(p.getUniqueId());
-
-            new BukkitRunnable() {
-                @Override public void run() {
-                    if (p.isOnline()) plugin.applyStartKit(p);
-                }
-            }.runTaskLater(plugin, 5L);
-
-            new BukkitRunnable() {
-                @Override public void run() {
-                    if (p.isOnline()) plugin.applyStartKit(p);
-                }
-            }.runTaskLater(plugin, 15L);
+            plugin.syncLayoutInstant(p, 2);
         }
 
         final int maxSeconds = plugin.startCountdownDuration;
@@ -66,6 +55,9 @@ public class CountdownManager {
 
                         if (plugin.blockReplenishManager != null) {
                             plugin.blockReplenishManager.scanPlayerInventory(p);
+                        }
+                        if (plugin.bridgeBlockResetManager != null) {
+                            plugin.bridgeBlockResetManager.captureKitBlocks(p);
                         }
                     }
                     cancel();

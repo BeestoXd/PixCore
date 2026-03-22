@@ -1,0 +1,11 @@
+enabled: true
+default-void-y: 84
+kit-void-y:
+  bedfight: 82
+  thebridge: 82
+  fireballfight: 82
+respawn-kits:
+  - bedfight
+  - fireballfight
+  - thebridge
+  - battlerush
