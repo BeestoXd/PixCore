@@ -1,6 +1,6 @@
 name: PixCore
 version: '1.0'
-main: com.pixra.pixCore.PixCore
+main: com.pixra.pixcore.PixCore
 api-version: '1.21'
 softdepend: [StrikePractice, PlaceholderAPI]
 commands:
@@ -8,6 +8,9 @@ commands:
     description: PixCore admin commands
     usage: /pix <reload|pl|bed|leaderboard>
     permission: pixcore.admin
+  pixffa:
+    description: Pix FFA commands
+    usage: /pixffa [join|leave|pos|reload|battlekit]
   savelayout:
     description: Save custom layouts manually created while in battle.
     aliases: [ layout, savekit ]

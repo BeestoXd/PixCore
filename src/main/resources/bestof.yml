@@ -7,3 +7,15 @@ stickfight:
 
 stickfightelo:
   score-limit: 5
+
+mlgrush:
+  score-limit: 5
+
+mlgrushelo:
+  score-limit: 5
+
+battlerush:
+  score-limit: 3
+
+battlerushelo:
+  score-limit: 3

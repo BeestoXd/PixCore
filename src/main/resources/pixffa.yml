@@ -1,0 +1,54 @@
+enabled: true
+
+arena:
+  spawn:
+    world: ""
+    x: 0.5
+    y: 80.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0
+  respawn-delay-ticks: 2
+  void-y-threshold: -64
+
+combat:
+  request-seconds: 20
+  active-seconds: 20
+  require-reciprocal-hit: true
+  actionbar: "&6Combat: &e<seconds>s"
+
+lobby-item:
+  enabled: true
+  material: GOLD_SWORD
+  slot: 3
+  hub-radius: 24
+  name: "&6&lPix FFA"
+  lore:
+    - "&7Right-click to join the FFA arena"
+
+battlekit:
+  active: default
+  build-enabled: false
+
+battlekits:
+  default:
+    contents: {}
+    armor: {}
+    offhand: null
+
+messages:
+  prefix: "&6[PixFFA] &f"
+  join: "&aYou joined the FFA arena."
+  leave: "&eYou left the FFA arena."
+  respawn: "&aRespawned at the arena spawn."
+  setup-missing: "&cThe FFA arena is not set up yet. Use /pixffa pos and prepare a battlekit first."
+  arena-closed: "&cFFA is currently closed."
+  in-strikepractice-fight: "&cYou are still in a StrikePractice fight."
+  no-battlekit: "&cThe active FFA battlekit is not ready yet."
+  request-self: "&eCombat request sent to <player>."
+  request-target: "&e<player> challenged you. Hit back to accept."
+  request-expired: "&7Combat between <player1> and <player2> was canceled."
+  combat-started: "&cCombat started against <player>."
+  combat-ended: "&7Combat with <player> ended."
+  blocked-third-party: "&7<player> is already in combat with another player."
+  already-in-combat: "&7You are already in combat with another player."

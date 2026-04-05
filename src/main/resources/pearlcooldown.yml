@@ -1,0 +1,8 @@
+pearl-cooldown:
+  enabled: true
+  # Berlaku untuk semua kit.
+  default: 15
+  message: "&cPearl is on cooldown! &e<seconds>s remaining"
+  kits:
+    # Override per kit cukup pakai nama kit-nya. Contoh: pearlfight: 0
+    pearlfight: 0

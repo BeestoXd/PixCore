@@ -20,10 +20,11 @@ messages:
       subtitle: "&c<red_score> &8- &9<blue_score>"
   bed-break-self: "&cYou can't break your own bed!"
   block-place-denied: "&cYou cannot place blocks while respawning!"
+  block-place-denied-spawn: "&cYou cannot place blocks on a respawn point!"
   block-place-denied-start: "&cYou cannot place blocks while the match is starting!"
   block-place-denied-start-round: "&cYou cannot place blocks while the round is starting!"
   block-break-denied-start: "&cYou cannot break blocks while the match is starting!"
-  build-limit-reached: "&cYou cannot place block at there!"
+  build-limit-reached: "&cYou cannot place block at height limit"
   build-outside-arena: "&cYou cannot place block outside the arena!"
   # --- DEATH MESSAGES (Chat) ---
   # <victim> = Nama korban (sudah berwarna sesuai tim)
@@ -47,12 +48,16 @@ settings:
   bridge-party-score-limit: 5
   default-respawn-time: 3
   respawn-countdown-interval: 20
+  pearlfight:
+    lives: 3
+    respawn-time: 3
   void-y-trigger: 83
   spawn-protection-break:
     enabled: true
     kits:
       - "bedfight"
       - "thebridge"
+      - "thebridgeelo"
     delay-before-break: 1 # sebelum animasi mulai (0 = langsung)
     animation-tick-interval: 2 # speed break (semakin kecil semakin cepat)
     play-sound: true
@@ -64,6 +69,7 @@ settings:
       - "topfight"
       - "tntsumo"
       - "stickfight"
+      - "pearlfight"
     delay-before-break: 1 # sebelum animasi mulai dan blok break
     animation-tick-interval: 5 # speed animation break (semakin kecil semakin cepat)
     play-sound: true
@@ -219,7 +225,17 @@ settings:
     - "bedfight"
     - "fireballfight"
   end-match:
-  sounds:
-    enabled: true
-    victory-primary: FIREWORK_LAUNCH
-    victory-secondary: FIREWORK_TWINKLE
+    effects:
+      max-distance: 48
+      hub-exclusion-radius: 24
+    sounds:
+      enabled: true
+      victory-primary: FIREWORK_LAUNCH
+      victory-secondary: FIREWORK_TWINKLE
+      defeat-primary: FIREWORK_LAUNCH
+      defeat-secondary: FIREWORK_TWINKLE_FAR
+    fireworks:
+      enabled: true
+      bursts: 4
+      interval-ticks: 10
+      visible-to-match-viewers-only: true

@@ -1,0 +1,4 @@
+default: 100
+
+kits:
+- thebridge: 98
