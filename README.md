@@ -90,8 +90,10 @@ PixCore extends StrikePractice with advanced duel mechanics, party fight modes, 
 
 ## Installation
 
-1. Download the latest `pixcore-1.0.jar` from [Releases](../../releases).
-2. Place the JAR into your server's `plugins/` directory.
+PixCore does not provide pre-built releases. You need to build the plugin from source.
+
+1. Clone the repository and build the JAR — see [Build from Source](#build-from-source).
+2. Place the output `target/pixcore-1.0.jar` into your server's `plugins/` directory.
 3. Ensure **StrikePractice** is already installed and loaded.
 4. *(Optional)* Install **PlaceholderAPI** for custom placeholder support.
 5. Start or restart your server.
