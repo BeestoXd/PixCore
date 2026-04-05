@@ -83,7 +83,7 @@ PixCore extends StrikePractice with advanced duel mechanics, party fight modes, 
 |---|---|
 | Java | 21+ |
 | Paper / Folia | 1.21 |
-| StrikePractice | Latest |
+| [StrikePractice](https://www.spigotmc.org/resources/strikepractice-%E2%80%93-1v1-2v2-bots-fights-pvp-events-parties-build-fights-and-more.46906/) | Latest |
 | PlaceholderAPI | 2.12+ *(optional)* |
 
 ---
@@ -94,7 +94,7 @@ PixCore does not provide pre-built releases. You need to build the plugin from s
 
 1. Clone the repository and build the JAR — see [Build from Source](#build-from-source).
 2. Place the output `target/pixcore-1.0.jar` into your server's `plugins/` directory.
-3. Ensure **StrikePractice** is already installed and loaded.
+3. Ensure **StrikePractice** is already installed and loaded. You must obtain it from [SpigotMC](https://www.spigotmc.org/resources/strikepractice-%E2%80%93-1v1-2v2-bots-fights-pvp-events-parties-build-fights-and-more.46906/) or [BuiltByBit](https://builtbybit.com/resources/strikepractice-practice-pvp-plugin.74743/?ref=discover).
 4. *(Optional)* Install **PlaceholderAPI** for custom placeholder support.
 5. Start or restart your server.
 6. Configuration files will auto-generate under `plugins/PixCore/`.
