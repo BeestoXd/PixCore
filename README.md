@@ -106,7 +106,7 @@ PixCore does not provide pre-built releases. You need to build the plugin from s
 **Prerequisites:** Java 21 JDK, Maven 3.9+
 
 ```bash
-git clone https://github.com/<your-username>/PixCore.git
+git clone https://github.com/BeestoXd/PixCore.git
 cd PixCore
 mvn clean package
 ```
