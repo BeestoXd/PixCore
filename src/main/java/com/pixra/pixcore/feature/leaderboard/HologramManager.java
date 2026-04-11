@@ -53,7 +53,8 @@ public class HologramManager {
     private static final double PLAYER_HOLOGRAM_LAYOUT_RELEVANCE_DISTANCE_SQUARED = 16.0D;
     private static final double PLAYER_HOLOGRAM_LAYOUT_MAX_VERTICAL_DELTA = 8.0D;
 
-    private static final Set<String> VALID_CATEGORIES = new HashSet<>(Arrays.asList("ws", "wins", "kills"));
+    private static final Set<String> VALID_CATEGORIES =
+            new HashSet<>(Arrays.asList("ws", "winstreak", "wins", "kills", "deaths", "playtime", "elo"));
     private static final Set<String> VALID_PERIODS = new HashSet<>(
             Arrays.asList("daily", "weekly", "monthly", "lifetime"));
 
@@ -149,6 +150,30 @@ public class HologramManager {
         for (String k : kits)
             result.add(k.toLowerCase());
         return result.isEmpty() ? Collections.singletonList("unknown") : result;
+    }
+
+    private List<String> getRotationKits(String category) {
+        List<String> rawKits = getRotationKits();
+        if (!"elo".equals(plugin.leaderboardManager.normalizeCategory(category))) {
+            return rawKits;
+        }
+
+        LinkedHashMap<String, String> uniqueRankedKits = new LinkedHashMap<>();
+        for (String rawKit : rawKits) {
+            String kitIdentity = plugin.leaderboardManager.resolveLeaderboardKitIdentity("elo", rawKit);
+            String displayKitName = plugin.leaderboardManager.resolveLeaderboardKitDisplayName("elo", rawKit);
+            if (displayKitName == null || displayKitName.trim().isEmpty()
+                    || "global_elo".equalsIgnoreCase(kitIdentity)
+                    || uniqueRankedKits.containsKey(kitIdentity)) {
+                continue;
+            }
+            uniqueRankedKits.put(kitIdentity, displayKitName);
+        }
+
+        if (uniqueRankedKits.isEmpty()) {
+            return Collections.singletonList("unknown");
+        }
+        return new ArrayList<>(uniqueRankedKits.values());
     }
 
     private int getRotationIntervalSeconds() {
@@ -285,19 +310,26 @@ public class HologramManager {
     }
 
     public boolean placeStandingHologram(Player admin, String category, String period) {
-        category = category.toLowerCase();
-        period = period.toLowerCase();
+        category = plugin.leaderboardManager.normalizeCategory(category);
+        period = plugin.leaderboardManager.normalizePeriod(period);
 
         if (!VALID_CATEGORIES.contains(category)) {
-            admin.sendMessage(color("&cInvalid category. Use: &ews &c| &ewins &c| &ekills"));
+            admin.sendMessage(color("&cInvalid category. Use: &ews &c| &ewins &c| &ekills &c| &edeaths &c| &eplaytime &c| &eelo"));
             return false;
         }
         if (!VALID_PERIODS.contains(period)) {
             admin.sendMessage(color("&cInvalid period. Use: &edaily &c| &eweekly &c| &emonthly &c| &elifetime"));
             return false;
         }
-        if (category.equals("ws") && !period.equals("daily")) {
-            admin.sendMessage(color("&cDaily Streak &e(ws)&c only supports period &edaily&c."));
+        if (!plugin.leaderboardManager.supportsPeriod(category, period)) {
+            if ("winstreak".equals(category)) {
+                admin.sendMessage(color("&cDaily Streak only supports &edaily&c."));
+            } else if ("elo".equals(category)) {
+                admin.sendMessage(color("&cRanked Elo only supports &elifetime&c."));
+            } else {
+                admin.sendMessage(color("&c" + plugin.leaderboardManager.getCategoryDisplayName(category)
+                        + " only supports &elifetime&c."));
+            }
             return false;
         }
 
@@ -318,10 +350,13 @@ public class HologramManager {
         rotationIndex.put(id, 0);
         spawnStanding(id);
 
+        String modeSuffix = plugin.leaderboardManager.usesKitRotation(category)
+                ? " &a| Rotates kits: &e" + String.join(", ", getRotationKits(category))
+                : " &a| Scope: &eGLOBAL";
         admin.sendMessage(color("&a[PixCore] Standing hologram &e#" + id
-                + " &aplaced! Category: &e" + category.toUpperCase()
-                + " &a| Period: &e" + period.toUpperCase()
-                + " &a| Rotates kits: &e" + String.join(", ", getRotationKits())));
+                + " &aplaced! Category: &e" + category.toUpperCase(Locale.ROOT)
+                + " &a| Period: &e" + period.toUpperCase(Locale.ROOT)
+                + modeSuffix));
         return true;
     }
 
@@ -384,12 +419,15 @@ public class HologramManager {
         double x = standingCfg.getDouble(path + ".x");
         double y = standingCfg.getDouble(path + ".y");
         double z = standingCfg.getDouble(path + ".z");
-        String category = standingCfg.getString(path + ".category", "ws");
+        String category = plugin.leaderboardManager.normalizeCategory(standingCfg.getString(path + ".category", "ws"));
         String period = standingCfg.getString(path + ".period", "daily");
 
-        List<String> kits = getRotationKits();
-        int idx = rotationIndex.getOrDefault(id, 0) % kits.size();
-        String kit = kits.get(idx);
+        String kit = null;
+        if (plugin.leaderboardManager.usesKitRotation(category)) {
+            List<String> kits = getRotationKits(category);
+            int idx = rotationIndex.getOrDefault(id, 0) % kits.size();
+            kit = kits.get(idx);
+        }
 
         Location top = new Location(world, x, y, z);
         List<String> lines = buildStandingLines(category, period, kit);
@@ -418,12 +456,16 @@ public class HologramManager {
                 ConfigurationSection sec = standingCfg.getConfigurationSection("holograms");
                 if (sec == null)
                     return;
-                List<String> kits = getRotationKits();
                 for (String key : sec.getKeys(false)) {
                     try {
                         int id = Integer.parseInt(key);
-                        int next = (rotationIndex.getOrDefault(id, 0) + 1) % kits.size();
-                        rotationIndex.put(id, next);
+                        String category = plugin.leaderboardManager.normalizeCategory(
+                                standingCfg.getString("holograms." + id + ".category", "winstreak"));
+                        if (plugin.leaderboardManager.usesKitRotation(category)) {
+                            List<String> kits = getRotationKits(category);
+                            int next = (rotationIndex.getOrDefault(id, 0) + 1) % kits.size();
+                            rotationIndex.put(id, next);
+                        }
                         spawnStanding(id);
                     } catch (NumberFormatException ignored) {
                     }
@@ -514,6 +556,7 @@ public class HologramManager {
         String titleColor, titleLabel, categoryLabel;
         switch (category) {
             case "ws":
+            case "winstreak":
                 titleColor = "&b";
                 titleLabel = "✦ DAILY STREAK ✦";
                 categoryLabel = "Daily Streak";
@@ -522,6 +565,21 @@ public class HologramManager {
                 titleColor = "&a";
                 titleLabel = "✦ TOP WINS ✦";
                 categoryLabel = "Wins";
+                break;
+            case "deaths":
+                titleColor = "&c";
+                titleLabel = "✦ TOP DEATHS ✦";
+                categoryLabel = "Deaths";
+                break;
+            case "playtime":
+                titleColor = "&b";
+                titleLabel = "✦ TOP PLAYTIME ✦";
+                categoryLabel = "Playtime";
+                break;
+            case "elo":
+                titleColor = "&6";
+                titleLabel = "✦ RANKED ELO ✦";
+                categoryLabel = "Ranked Elo";
                 break;
             default:
                 titleColor = "&c";
@@ -550,13 +608,21 @@ public class HologramManager {
         String dataCategory = category.equals("ws") ? "winstreak" : category;
 
         lines.add(titleColor + "&l" + periodLabel + " " + titleLabel);
-        lines.add("&eKit: &f" + kit.toUpperCase());
+        if (plugin.leaderboardManager.usesKitRotation(category) && kit != null && !kit.isEmpty()) {
+            lines.add("&eKit: &f" + kit.toUpperCase(Locale.ROOT));
+        } else {
+            lines.add("&7Global leaderboard");
+        }
         if (countdown != null) {
             lines.add("&7Resets in: &c" + countdown);
+        } else if (category.equals("elo")) {
+            lines.add("&7Current ranked ladder");
+        } else if (category.equals("playtime")) {
+            lines.add("&7Total server playtime");
         } else {
             lines.add("&7Lifetime stats");
         }
-        lines.addAll(topN(plugin.leaderboardManager.getTop(dataCategory, period, kit, 10), 10));
+        lines.addAll(topDisplayN(plugin.leaderboardManager.getDisplayTop(dataCategory, period, kit, 10), 10));
         return padTo(lines, LINES_STAND);
     }
 
@@ -571,6 +637,24 @@ public class HologramManager {
                 Map.Entry<String, Integer> e = top.get(i);
                 String pName = e.getKey();
                 lines.add(c + ic + (i + 1) + ". " + resolvePrefix(pName) + "&f" + pName + "&r " + resolveTag(pName) + "&r &8- &d" + e.getValue());
+            } else {
+                lines.add(c + (i + 1) + ". &8&o-");
+            }
+        }
+        return lines;
+    }
+
+    private List<String> topDisplayN(List<LeaderboardManager.DisplayEntry> top, int n) {
+        String[] colors = { "&a", "&e", "&6", "&f", "&7", "&7", "&7", "&7", "&7", "&7" };
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            String c = i < colors.length ? colors[i] : "&7";
+            if (i < top.size()) {
+                LeaderboardManager.DisplayEntry entry = top.get(i);
+                String playerName = entry.getPlayerName();
+                lines.add(c + "#" + (i + 1) + " "
+                        + resolvePrefix(playerName) + "&f" + playerName + "&r "
+                        + resolveTag(playerName) + "&r &8- &d" + entry.getDisplayValue());
             } else {
                 lines.add(c + (i + 1) + ". &8&o-");
             }
@@ -1143,6 +1227,7 @@ public class HologramManager {
                 String n = as.getCustomName();
                 if (n == null || n.trim().isEmpty()
                         || n.contains("DAILY STREAK") || n.contains("WINSTREAK") || n.contains("TOP WINS") || n.contains("TOP KILLS")
+                        || n.contains("TOP DEATHS") || n.contains("TOP PLAYTIME") || n.contains("RANKED ELO")
                         || n.contains("Kit:") || n.contains("Resets in:") || n.contains("Lifetime")
                         || n.contains("✦") || n.contains("⚑") || n.contains("★"))
                     as.remove();
@@ -1175,12 +1260,25 @@ public class HologramManager {
                     String titleColor, titleLabel;
                     switch (category) {
                         case "ws":
+                        case "winstreak":
                             titleColor = "&b";
                             titleLabel = "✦ DAILY STREAK ✦";
                             break;
                         case "wins":
                             titleColor = "&a";
                             titleLabel = "✦ TOP WINS ✦";
+                            break;
+                        case "deaths":
+                            titleColor = "&c";
+                            titleLabel = "✦ TOP DEATHS ✦";
+                            break;
+                        case "playtime":
+                            titleColor = "&b";
+                            titleLabel = "✦ TOP PLAYTIME ✦";
+                            break;
+                        case "elo":
+                            titleColor = "&6";
+                            titleLabel = "✦ RANKED ELO ✦";
                             break;
                         default:
                             titleColor = "&c";
@@ -1229,6 +1327,7 @@ public class HologramManager {
 
     private String buildGlowTitle(String text, String baseColor, int frame) {
         String dimColor = getDimColor(baseColor);
+        String glowColor = getGlowColor(baseColor);
         int len = text.length();
         int glowPos = frame % (len + 6);
 
@@ -1236,7 +1335,7 @@ public class HologramManager {
         for (int i = 0; i < len; i++) {
             int dist = Math.abs(i - glowPos);
             if (dist == 0) {
-                sb.append("&f&l");
+                sb.append(glowColor).append("&l");
             } else if (dist == 1) {
                 sb.append(baseColor).append("&l");
             } else {
@@ -1253,6 +1352,8 @@ public class HologramManager {
                 return "&3";
             case "&a":
                 return "&2";
+            case "&4":
+                return "&4";
             case "&c":
                 return "&4";
             case "&6":
@@ -1260,6 +1361,13 @@ public class HologramManager {
             default:
                 return "&8";
         }
+    }
+
+    private String getGlowColor(String baseColor) {
+        if ("&4".equals(baseColor)) {
+            return "&c";
+        }
+        return "&f";
     }
 
     private String strip(String s) {

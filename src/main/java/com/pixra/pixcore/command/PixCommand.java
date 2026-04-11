@@ -229,8 +229,8 @@ public class PixCommand implements CommandExecutor {
                         if (plugin.hologramManager != null)
                             plugin.hologramManager.placeStandingHologram((Player) sender, category, period);
                     } else {
-                        sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard set <ws|wins|kills> <daily|weekly|monthly|lifetime>");
-                        sender.sendMessage(ChatColor.GRAY + "Note: ws only supports 'daily'.");
+                        sender.sendMessage(ChatColor.RED + "Usage: /pix leaderboard set <ws|wins|kills|deaths|playtime|elo> <daily|weekly|monthly|lifetime>");
+                        sender.sendMessage(ChatColor.GRAY + "Note: ws only supports 'daily'; deaths/playtime/elo only support 'lifetime'.");
                     }
                     return true;
                 }
@@ -444,7 +444,7 @@ public class PixCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/pix arena restore <arena>" + ChatColor.GRAY + " - Restore arena from saved baseline");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard add <kit>" + ChatColor.GRAY + " - Register kit for countdown holograms");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard remove <kit>" + ChatColor.GRAY + " - Unregister kit countdown hologram");
-        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard set <ws|wins|kills> <period>" + ChatColor.GRAY + " - Place standing hologram at your position");
+        sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard set <ws|wins|kills|deaths|playtime|elo> <period>" + ChatColor.GRAY + " - Place standing hologram at your position");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard setremove <id>" + ChatColor.GRAY + " - Remove standing hologram by ID");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard setlist" + ChatColor.GRAY + " - List all standing holograms");
         sender.sendMessage(ChatColor.YELLOW + "/pix leaderboard enable [kit]" + ChatColor.GRAY + " - Enable leaderboard");

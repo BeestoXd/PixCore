@@ -1,6 +1,7 @@
 package com.pixra.pixcore.feature.leaderboard;
 
 import com.pixra.pixcore.PixCore;
+import me.clip.placeholderapi.PlaceholderAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -17,17 +18,21 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import me.clip.placeholderapi.PlaceholderAPI;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public class LeaderboardGUIManager implements Listener {
+
+    private static final int MAIN_PAGES = 4;
+    private static final int DETAIL_SIZE = 54;
 
     private final PixCore plugin;
     private File guiFile;
@@ -36,6 +41,7 @@ public class LeaderboardGUIManager implements Listener {
     private String titleMain;
     private String itemTop10Format;
     private String itemResetFormat;
+    private String globalTop10Format;
 
     private final Map<UUID, String> activeMenus = new HashMap<>();
 
@@ -50,109 +56,125 @@ public class LeaderboardGUIManager implements Listener {
         guiFile = new File(plugin.getDataFolder(), "leaderboard_gui.yml");
         if (!guiFile.exists()) {
             try {
-                guiFile.getParentFile().mkdirs();
+                File parent = guiFile.getParentFile();
+                if (parent != null && !parent.exists()) {
+                    parent.mkdirs();
+                }
                 guiFile.createNewFile();
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-        guiConfig = YamlConfiguration.loadConfiguration(guiFile);
 
+        guiConfig = YamlConfiguration.loadConfiguration(guiFile);
         boolean saveNeeded = false;
 
-        if (!guiConfig.contains("titles.main-menu")) {
-            guiConfig.set("titles.main-menu", "&8Leaderboards");
-            saveNeeded = true;
-        }
-        if (!guiConfig.contains("titles.item-top10-format")) {
-            guiConfig.set("titles.item-top10-format", "&7Top 10 {type} {period}:");
-            guiConfig.set("titles.item-reset-format", "&7Reset in: &c{time}");
-            saveNeeded = true;
-        }
+        saveNeeded |= setDefault("titles.main-menu", "&8Leaderboards");
+        saveNeeded |= setDefault("titles.item-top10-format", "&7Top 10 {type} {period}:");
+        saveNeeded |= setDefault("titles.item-reset-format", "&7Reset in: &c{time}");
+        saveNeeded |= setDefault("titles.global-top10-format", "&7Top 10 {type}:");
 
-        if (!guiConfig.contains("gui-settings.page-3-support")) {
-            guiConfig.set("gui-settings.page-3-support", true);
+        saveNeeded |= setDefault("gui-settings.winstreak-daily.name", "&b&lDAILY STREAK");
+        saveNeeded |= setDefault("gui-settings.winstreak-daily.lore", "&7Click to view Daily Streak");
+        saveNeeded |= setDefault("gui-settings.winstreak-daily.slot", 22);
+        saveNeeded |= setDefault("gui-settings.winstreak-daily.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.winstreak-daily.name", "&b&lDAILY STREAK");
-            guiConfig.set("gui-settings.winstreak-daily.lore", "&7Click to view Daily Streak");
-            guiConfig.set("gui-settings.winstreak-daily.slot", 22);
-            guiConfig.set("gui-settings.winstreak-daily.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.wins-daily.name", "&a&lDAILY TOP WINS");
+        saveNeeded |= setDefault("gui-settings.wins-daily.lore", "&7Click to view Daily Top Wins");
+        saveNeeded |= setDefault("gui-settings.wins-daily.slot", 20);
+        saveNeeded |= setDefault("gui-settings.wins-daily.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.wins-daily.name", "&a&lDAILY TOP WINS");
-            guiConfig.set("gui-settings.wins-daily.lore", "&7Click to view Daily Top Wins");
-            guiConfig.set("gui-settings.wins-daily.slot", 20);
-            guiConfig.set("gui-settings.wins-daily.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.wins-weekly.name", "&e&lWEEKLY TOP WINS");
+        saveNeeded |= setDefault("gui-settings.wins-weekly.lore", "&7Click to view Weekly Top Wins");
+        saveNeeded |= setDefault("gui-settings.wins-weekly.slot", 21);
+        saveNeeded |= setDefault("gui-settings.wins-weekly.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.wins-weekly.name", "&e&lWEEKLY TOP WINS");
-            guiConfig.set("gui-settings.wins-weekly.lore", "&7Click to view Weekly Top Wins");
-            guiConfig.set("gui-settings.wins-weekly.slot", 21);
-            guiConfig.set("gui-settings.wins-weekly.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.wins-monthly.name", "&6&lMONTHLY TOP WINS");
+        saveNeeded |= setDefault("gui-settings.wins-monthly.lore", "&7Click to view Monthly Top Wins");
+        saveNeeded |= setDefault("gui-settings.wins-monthly.slot", 23);
+        saveNeeded |= setDefault("gui-settings.wins-monthly.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.wins-monthly.name", "&6&lMONTHLY TOP WINS");
-            guiConfig.set("gui-settings.wins-monthly.lore", "&7Click to view Monthly Top Wins");
-            guiConfig.set("gui-settings.wins-monthly.slot", 23);
-            guiConfig.set("gui-settings.wins-monthly.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.wins-lifetime.name", "&c&lLIFETIME TOP WINS");
+        saveNeeded |= setDefault("gui-settings.wins-lifetime.lore", "&7Click to view Lifetime Top Wins");
+        saveNeeded |= setDefault("gui-settings.wins-lifetime.slot", 24);
+        saveNeeded |= setDefault("gui-settings.wins-lifetime.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.wins-lifetime.name", "&c&lLIFETIME TOP WINS");
-            guiConfig.set("gui-settings.wins-lifetime.lore", "&7Click to view Lifetime Top Wins");
-            guiConfig.set("gui-settings.wins-lifetime.slot", 24);
-            guiConfig.set("gui-settings.wins-lifetime.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.kills-daily.name", "&a&lDAILY TOP KILLS");
+        saveNeeded |= setDefault("gui-settings.kills-daily.lore", "&7Click to view Daily Top Kills");
+        saveNeeded |= setDefault("gui-settings.kills-daily.slot", 20);
+        saveNeeded |= setDefault("gui-settings.kills-daily.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.kills-daily.name", "&a&lDAILY TOP KILLS");
-            guiConfig.set("gui-settings.kills-daily.lore", "&7Click to view Daily Top KILLS");
-            guiConfig.set("gui-settings.kills-daily.slot", 20);
-            guiConfig.set("gui-settings.kills-daily.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.kills-weekly.name", "&e&lWEEKLY TOP KILLS");
+        saveNeeded |= setDefault("gui-settings.kills-weekly.lore", "&7Click to view Weekly Top Kills");
+        saveNeeded |= setDefault("gui-settings.kills-weekly.slot", 21);
+        saveNeeded |= setDefault("gui-settings.kills-weekly.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.kills-weekly.name", "&e&lWEEKLY TOP KILLS");
-            guiConfig.set("gui-settings.kills-weekly.lore", "&7Click to view Weekly Top KILLS");
-            guiConfig.set("gui-settings.kills-weekly.slot", 21);
-            guiConfig.set("gui-settings.kills-weekly.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.kills-monthly.name", "&6&lMONTHLY TOP KILLS");
+        saveNeeded |= setDefault("gui-settings.kills-monthly.lore", "&7Click to view Monthly Top Kills");
+        saveNeeded |= setDefault("gui-settings.kills-monthly.slot", 23);
+        saveNeeded |= setDefault("gui-settings.kills-monthly.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.kills-monthly.name", "&6&lMONTHLY TOP KILLS");
-            guiConfig.set("gui-settings.kills-monthly.lore", "&7Click to view Monthly Top KILLS");
-            guiConfig.set("gui-settings.kills-monthly.slot", 23);
-            guiConfig.set("gui-settings.kills-monthly.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.kills-lifetime.name", "&c&lLIFETIME TOP KILLS");
+        saveNeeded |= setDefault("gui-settings.kills-lifetime.lore", "&7Click to view Lifetime Top Kills");
+        saveNeeded |= setDefault("gui-settings.kills-lifetime.slot", 24);
+        saveNeeded |= setDefault("gui-settings.kills-lifetime.material", "NAME_TAG");
 
-            guiConfig.set("gui-settings.kills-lifetime.name", "&c&lLIFETIME TOP KILLS");
-            guiConfig.set("gui-settings.kills-lifetime.lore", "&7Click to view Lifetime Top KILLS");
-            guiConfig.set("gui-settings.kills-lifetime.slot", 24);
-            guiConfig.set("gui-settings.kills-lifetime.material", "NAME_TAG");
+        saveNeeded |= setDefault("gui-settings.deaths-lifetime.name", "&4&lLIFETIME TOP DEATHS");
+        saveNeeded |= setDefault("gui-settings.deaths-lifetime.lore", "&7Click to view Lifetime Top Deaths");
+        saveNeeded |= setDefault("gui-settings.deaths-lifetime.slot", 20);
+        saveNeeded |= setDefault("gui-settings.deaths-lifetime.material", "SKELETON_SKULL");
 
-            guiConfig.set("gui-settings.close.name", "&c&lCLOSE");
-            guiConfig.set("gui-settings.close.lore", "&7Close the menu");
-            guiConfig.set("gui-settings.close.slot", 40);
-            guiConfig.set("gui-settings.close.material", "NETHER_STAR");
+        saveNeeded |= setDefault("gui-settings.playtime-lifetime.name", "&b&lLIFETIME TOP PLAYTIME");
+        saveNeeded |= setDefault("gui-settings.playtime-lifetime.lore", "&7Click to view Lifetime Top Playtime");
+        saveNeeded |= setDefault("gui-settings.playtime-lifetime.slot", 22);
+        saveNeeded |= setDefault("gui-settings.playtime-lifetime.material", "CLOCK");
 
-            guiConfig.set("gui-settings.next-page.name", "&a&lNEXT PAGE");
-            guiConfig.set("gui-settings.next-page.lore", "&7Go to next page");
-            guiConfig.set("gui-settings.next-page.slot", 41);
-            guiConfig.set("gui-settings.next-page.material", "ARROW");
+        saveNeeded |= setDefault("gui-settings.elo-lifetime.name", "&6&lRANKED ELO");
+        saveNeeded |= setDefault("gui-settings.elo-lifetime.lore", "&7Click to view Ranked Elo per kit");
+        saveNeeded |= setDefault("gui-settings.elo-lifetime.slot", 24);
+        saveNeeded |= setDefault("gui-settings.elo-lifetime.material", "DIAMOND_SWORD");
 
-            guiConfig.set("gui-settings.prev-page.name", "&c&lPREVIOUS PAGE");
-            guiConfig.set("gui-settings.prev-page.lore", "&7Go to previous page");
-            guiConfig.set("gui-settings.prev-page.slot", 39);
-            guiConfig.set("gui-settings.prev-page.material", "ARROW");
+        saveNeeded |= setDefault("gui-settings.close.name", "&c&lCLOSE");
+        saveNeeded |= setDefault("gui-settings.close.lore", "&7Close the menu");
+        saveNeeded |= setDefault("gui-settings.close.slot", 40);
+        saveNeeded |= setDefault("gui-settings.close.material", "NETHER_STAR");
 
-            guiConfig.set("gui-settings.back.name", "&c&lBACK");
-            guiConfig.set("gui-settings.back.lore", "&7Return to Main Menu");
-            guiConfig.set("gui-settings.back.slot", 48);
-            guiConfig.set("gui-settings.back.material", "ARROW");
+        saveNeeded |= setDefault("gui-settings.next-page.name", "&a&lNEXT PAGE");
+        saveNeeded |= setDefault("gui-settings.next-page.lore", "&7Go to next page");
+        saveNeeded |= setDefault("gui-settings.next-page.slot", 41);
+        saveNeeded |= setDefault("gui-settings.next-page.material", "ARROW");
 
-            guiConfig.set("gui-settings.period-close.name", "&c&lCLOSE");
-            guiConfig.set("gui-settings.period-close.lore", "&7Close the menu");
-            guiConfig.set("gui-settings.period-close.slot", 50);
-            guiConfig.set("gui-settings.period-close.material", "NETHER_STAR");
+        saveNeeded |= setDefault("gui-settings.prev-page.name", "&c&lPREVIOUS PAGE");
+        saveNeeded |= setDefault("gui-settings.prev-page.lore", "&7Go to previous page");
+        saveNeeded |= setDefault("gui-settings.prev-page.slot", 39);
+        saveNeeded |= setDefault("gui-settings.prev-page.material", "ARROW");
 
-            saveNeeded = true;
-        }
+        saveNeeded |= setDefault("gui-settings.back.name", "&c&lBACK");
+        saveNeeded |= setDefault("gui-settings.back.lore", "&7Return to Main Menu");
+        saveNeeded |= setDefault("gui-settings.back.slot", 48);
+        saveNeeded |= setDefault("gui-settings.back.material", "ARROW");
+
+        saveNeeded |= setDefault("gui-settings.period-close.name", "&c&lCLOSE");
+        saveNeeded |= setDefault("gui-settings.period-close.lore", "&7Close the menu");
+        saveNeeded |= setDefault("gui-settings.period-close.slot", 50);
+        saveNeeded |= setDefault("gui-settings.period-close.material", "NETHER_STAR");
 
         if (saveNeeded) {
             saveConfig();
         }
 
-        titleMain = ChatColor.translateAlternateColorCodes('&', guiConfig.getString("titles.main-menu", "&8Leaderboards"));
+        titleMain = color(guiConfig.getString("titles.main-menu", "&8Leaderboards"));
         itemTop10Format = guiConfig.getString("titles.item-top10-format", "&7Top 10 {type} {period}:");
         itemResetFormat = guiConfig.getString("titles.item-reset-format", "&7Reset in: &c{time}");
+        globalTop10Format = guiConfig.getString("titles.global-top10-format", "&7Top 10 {type}:");
+    }
+
+    private boolean setDefault(String path, Object value) {
+        if (guiConfig.contains(path)) {
+            return false;
+        }
+        guiConfig.set(path, value);
+        return true;
     }
 
     public void saveConfig() {
@@ -164,8 +186,8 @@ public class LeaderboardGUIManager implements Listener {
     }
 
     public void setGuiItem(String kitName, int slot, ItemStack item) {
-        kitName = ChatColor.stripColor(kitName).toLowerCase();
-        String path = "items." + kitName;
+        String normalizedKit = normalizeKit(kitName);
+        String path = "items." + normalizedKit;
         guiConfig.set(path + ".slot", slot);
         guiConfig.set(path + ".material", item.getType().name());
         guiConfig.set(path + ".data", item.getDurability());
@@ -173,23 +195,8 @@ public class LeaderboardGUIManager implements Listener {
     }
 
     public void removeGuiItem(String kitName) {
-        kitName = ChatColor.stripColor(kitName).toLowerCase();
-        guiConfig.set("items." + kitName, null);
+        guiConfig.set("items." + normalizeKit(kitName), null);
         saveConfig();
-    }
-
-    private ItemStack createConfigItem(String path) {
-        String name = guiConfig.getString(path + ".name", "&cName");
-        String loreLine = guiConfig.getString(path + ".lore", "");
-        String matName = guiConfig.getString(path + ".material", "STONE");
-
-        Material mat = Material.getMaterial(matName);
-        if (mat == null && matName.equalsIgnoreCase("BED")) {
-            mat = Material.getMaterial("RED_BED");
-        }
-        if (mat == null) mat = Material.STONE;
-
-        return createItem(mat, 0, name, loreLine);
     }
 
     public void openMainMenu(Player player) {
@@ -197,150 +204,209 @@ public class LeaderboardGUIManager implements Listener {
     }
 
     public void openMainMenu(Player player, int page) {
-        String invTitle = titleMain + " &7(" + page + "/3)";
-        invTitle = ChatColor.translateAlternateColorCodes('&', invTitle);
-        if (invTitle.length() > 32) invTitle = invTitle.substring(0, 32);
+        int targetPage = Math.max(1, Math.min(MAIN_PAGES, page));
+        String inventoryTitle = truncateInventoryTitle(color(titleMain + " &7(" + targetPage + "/" + MAIN_PAGES + ")"));
+        Inventory inventory = Bukkit.createInventory(null, 45, inventoryTitle);
 
-        Inventory inv = Bukkit.createInventory(null, 45, invTitle);
-
-        if (page == 1) {
-            inv.setItem(guiConfig.getInt("gui-settings.winstreak-daily.slot", 22), createConfigItem("gui-settings.winstreak-daily"));
-            inv.setItem(guiConfig.getInt("gui-settings.next-page.slot", 41), createConfigItem("gui-settings.next-page"));
-        } else if (page == 2) {
-            inv.setItem(guiConfig.getInt("gui-settings.wins-daily.slot", 20), createConfigItem("gui-settings.wins-daily"));
-            inv.setItem(guiConfig.getInt("gui-settings.wins-weekly.slot", 21), createConfigItem("gui-settings.wins-weekly"));
-            inv.setItem(guiConfig.getInt("gui-settings.wins-monthly.slot", 23), createConfigItem("gui-settings.wins-monthly"));
-            inv.setItem(guiConfig.getInt("gui-settings.wins-lifetime.slot", 24), createConfigItem("gui-settings.wins-lifetime"));
-            inv.setItem(guiConfig.getInt("gui-settings.prev-page.slot", 39), createConfigItem("gui-settings.prev-page"));
-            inv.setItem(guiConfig.getInt("gui-settings.next-page.slot", 41), createConfigItem("gui-settings.next-page"));
-        } else if (page == 3) {
-            inv.setItem(guiConfig.getInt("gui-settings.kills-daily.slot", 20), createConfigItem("gui-settings.kills-daily"));
-            inv.setItem(guiConfig.getInt("gui-settings.kills-weekly.slot", 21), createConfigItem("gui-settings.kills-weekly"));
-            inv.setItem(guiConfig.getInt("gui-settings.kills-monthly.slot", 23), createConfigItem("gui-settings.kills-monthly"));
-            inv.setItem(guiConfig.getInt("gui-settings.kills-lifetime.slot", 24), createConfigItem("gui-settings.kills-lifetime"));
-            inv.setItem(guiConfig.getInt("gui-settings.prev-page.slot", 39), createConfigItem("gui-settings.prev-page"));
+        if (targetPage == 1) {
+            inventory.setItem(getSlot("gui-settings.winstreak-daily.slot", 22), createConfigItem("gui-settings.winstreak-daily"));
+            inventory.setItem(getSlot("gui-settings.next-page.slot", 41), createConfigItem("gui-settings.next-page"));
+        } else if (targetPage == 2) {
+            inventory.setItem(getSlot("gui-settings.wins-daily.slot", 20), createConfigItem("gui-settings.wins-daily"));
+            inventory.setItem(getSlot("gui-settings.wins-weekly.slot", 21), createConfigItem("gui-settings.wins-weekly"));
+            inventory.setItem(getSlot("gui-settings.wins-monthly.slot", 23), createConfigItem("gui-settings.wins-monthly"));
+            inventory.setItem(getSlot("gui-settings.wins-lifetime.slot", 24), createConfigItem("gui-settings.wins-lifetime"));
+            inventory.setItem(getSlot("gui-settings.prev-page.slot", 39), createConfigItem("gui-settings.prev-page"));
+            inventory.setItem(getSlot("gui-settings.next-page.slot", 41), createConfigItem("gui-settings.next-page"));
+        } else if (targetPage == 3) {
+            inventory.setItem(getSlot("gui-settings.kills-daily.slot", 20), createConfigItem("gui-settings.kills-daily"));
+            inventory.setItem(getSlot("gui-settings.kills-weekly.slot", 21), createConfigItem("gui-settings.kills-weekly"));
+            inventory.setItem(getSlot("gui-settings.kills-monthly.slot", 23), createConfigItem("gui-settings.kills-monthly"));
+            inventory.setItem(getSlot("gui-settings.kills-lifetime.slot", 24), createConfigItem("gui-settings.kills-lifetime"));
+            inventory.setItem(getSlot("gui-settings.prev-page.slot", 39), createConfigItem("gui-settings.prev-page"));
+            inventory.setItem(getSlot("gui-settings.next-page.slot", 41), createConfigItem("gui-settings.next-page"));
+        } else {
+            inventory.setItem(getSlot("gui-settings.deaths-lifetime.slot", 20), createConfigItem("gui-settings.deaths-lifetime"));
+            inventory.setItem(getSlot("gui-settings.playtime-lifetime.slot", 22), createConfigItem("gui-settings.playtime-lifetime"));
+            inventory.setItem(getSlot("gui-settings.elo-lifetime.slot", 24), createConfigItem("gui-settings.elo-lifetime"));
+            inventory.setItem(getSlot("gui-settings.prev-page.slot", 39), createConfigItem("gui-settings.prev-page"));
         }
 
-        inv.setItem(guiConfig.getInt("gui-settings.close.slot", 40), createConfigItem("gui-settings.close"));
-
-        player.openInventory(inv);
-        activeMenus.put(player.getUniqueId(), "main:" + page);
+        inventory.setItem(getSlot("gui-settings.close.slot", 40), createConfigItem("gui-settings.close"));
+        player.openInventory(inventory);
+        activeMenus.put(player.getUniqueId(), "main:" + targetPage);
     }
 
     public void openPeriodMenu(Player player, String category, String period) {
-        String capCat = category.substring(0, 1).toUpperCase() + category.substring(1);
-        String capPer = period.toUpperCase();
+        String normalizedCategory = plugin.leaderboardManager.normalizeCategory(category);
+        String normalizedPeriod = plugin.leaderboardManager.normalizePeriod(period);
+        String inventoryTitle = truncateInventoryTitle(color("&8" + normalizedPeriod.toUpperCase(Locale.ROOT) + " "
+                + plugin.leaderboardManager.getCategoryDisplayName(normalizedCategory).toUpperCase(Locale.ROOT)));
 
-        String invTitle = "&8" + capPer + " " + capCat;
-        invTitle = ChatColor.translateAlternateColorCodes('&', invTitle);
-        if (invTitle.length() > 32) invTitle = invTitle.substring(0, 32);
-
-        Inventory inv = Bukkit.createInventory(null, 54, invTitle);
-
-        updatePeriodMenu(inv, category, period);
-
-        player.openInventory(inv);
-        activeMenus.put(player.getUniqueId(), category + ":" + period);
+        Inventory inventory = Bukkit.createInventory(null, DETAIL_SIZE, inventoryTitle);
+        updateKitMenu(inventory, normalizedCategory, normalizedPeriod);
+        player.openInventory(inventory);
+        activeMenus.put(player.getUniqueId(), "kits:" + normalizedCategory + ":" + normalizedPeriod);
     }
 
-    private void updatePeriodMenu(Inventory inv, String category, String period) {
+    public void openGlobalMenu(Player player, String category) {
+        String normalizedCategory = plugin.leaderboardManager.normalizeCategory(category);
+        String inventoryTitle = truncateInventoryTitle(color("&8LIFETIME "
+                + plugin.leaderboardManager.getCategoryDisplayName(normalizedCategory).toUpperCase(Locale.ROOT)));
+
+        Inventory inventory = Bukkit.createInventory(null, DETAIL_SIZE, inventoryTitle);
+        updateGlobalMenu(inventory, normalizedCategory);
+        player.openInventory(inventory);
+        activeMenus.put(player.getUniqueId(), "global:" + normalizedCategory);
+    }
+
+    private void updateKitMenu(Inventory inventory, String category, String period) {
+        inventory.clear();
+        Set<String> renderedKitIdentities = new HashSet<>();
+
         ConfigurationSection itemsSection = guiConfig.getConfigurationSection("items");
         if (itemsSection != null) {
             for (String kitName : itemsSection.getKeys(false)) {
-                ConfigurationSection kitSec = itemsSection.getConfigurationSection(kitName);
-                int slot = kitSec.getInt("slot");
-                String matName = kitSec.getString("material");
-                short data = (short) kitSec.getInt("data");
-
-                Material mat = Material.getMaterial(matName);
-                if (mat == null && matName.equalsIgnoreCase("BED")) {
-                    mat = Material.getMaterial("RED_BED");
+                ConfigurationSection kitSection = itemsSection.getConfigurationSection(kitName);
+                if (kitSection == null) {
+                    continue;
                 }
-                if (mat == null) mat = Material.STONE;
 
-                ItemStack item = new ItemStack(mat, 1, data);
-                ItemMeta meta = item.getItemMeta();
-
-                String displayKitName = kitName.toUpperCase();
-                meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', "&e&l" + displayKitName));
-
-                List<String> lore = new ArrayList<>();
-                lore.add("");
-
-                String capCat = category.substring(0, 1).toUpperCase() + category.substring(1);
-                String formattedHeader = itemTop10Format.replace("{type}", capCat).replace("{period}", period.toUpperCase());
-                lore.add(ChatColor.translateAlternateColorCodes('&', formattedHeader));
-
-                List<Map.Entry<String, Integer>> top10 = plugin.leaderboardManager.getTop(category, period, kitName, 10);
-                String suffix = category.equalsIgnoreCase("kills") ? "Kills" : "Win";
-
-                for (int i = 0; i < 10; i++) {
-                    int rank = i + 1;
-                    String color = rank == 1 ? "&a" : (rank == 2 ? "&e" : (rank == 3 ? "&6" : "&f"));
-                    if (i < top10.size()) {
-                        Map.Entry<String, Integer> entry = top10.get(i);
-                        String pName = entry.getKey();
-                        lore.add(ChatColor.translateAlternateColorCodes('&', color + rank + ". " + resolvePrefix(pName) + "&f" + pName + "&r " + resolveTag(pName) + "&r &7- &d" + entry.getValue() + " " + suffix));
-                    } else {
-                        lore.add(ChatColor.translateAlternateColorCodes('&', color + rank + ". &7&o---"));
+                String displayKitName = "elo".equals(category)
+                        ? plugin.leaderboardManager.resolveLeaderboardKitDisplayName(category, kitName)
+                        : kitName;
+                String kitIdentity = plugin.leaderboardManager.resolveLeaderboardKitIdentity(category, kitName);
+                if ("elo".equals(category)) {
+                    if (displayKitName == null || displayKitName.trim().isEmpty()
+                            || "global_elo".equalsIgnoreCase(kitIdentity)
+                            || !renderedKitIdentities.add(kitIdentity)) {
+                        continue;
                     }
                 }
 
-                lore.add("");
-                String countdown = "Never";
-                if (period.equals("daily")) countdown = plugin.leaderboardManager.getDailyCountdown();
-                else if (period.equals("weekly")) countdown = plugin.leaderboardManager.getWeeklyCountdown();
-                else if (period.equals("monthly")) countdown = plugin.leaderboardManager.getMonthlyCountdown();
+                int slot = kitSection.getInt("slot");
+                Material material = resolveMaterial(kitSection.getString("material"), Material.STONE);
+                short data = (short) kitSection.getInt("data");
 
-                lore.add(ChatColor.translateAlternateColorCodes('&', itemResetFormat.replace("{time}", countdown)));
+                ItemStack item = new ItemStack(material, 1, data);
+                ItemMeta meta = item.getItemMeta();
+                if (meta == null) {
+                    continue;
+                }
+
+                meta.setDisplayName(color("&e&l" + displayKitName.toUpperCase(Locale.ROOT)));
+
+                List<String> lore = new ArrayList<>();
+                lore.add("");
+                lore.add(color(itemTop10Format
+                        .replace("{type}", plugin.leaderboardManager.getCategoryDisplayName(category))
+                        .replace("{period}", period.toUpperCase(Locale.ROOT))));
+
+                List<LeaderboardManager.DisplayEntry> topEntries =
+                        plugin.leaderboardManager.getDisplayTop(category, period, displayKitName, 10);
+                lore.addAll(buildTopLore(topEntries));
+                lore.add("");
+
+                String footer = buildFooterLine(category, period);
+                if (!footer.isEmpty()) {
+                    lore.add(color(footer));
+                }
 
                 meta.setLore(lore);
                 item.setItemMeta(meta);
 
-                if (slot >= 0 && slot < 54) {
-                    inv.setItem(slot, item);
+                if (slot >= 0 && slot < inventory.getSize()) {
+                    inventory.setItem(slot, item);
                 }
             }
         }
 
-        inv.setItem(guiConfig.getInt("gui-settings.back.slot", 48), createConfigItem("gui-settings.back"));
-        inv.setItem(guiConfig.getInt("gui-settings.period-close.slot", 50), createConfigItem("gui-settings.period-close"));
+        inventory.setItem(getSlot("gui-settings.back.slot", 48), createConfigItem("gui-settings.back"));
+        inventory.setItem(getSlot("gui-settings.period-close.slot", 50), createConfigItem("gui-settings.period-close"));
     }
 
-    private String resolvePrefix(String playerName) {
-        Player online = Bukkit.getPlayerExact(playerName);
-        if (online != null && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            String lp = PlaceholderAPI.setPlaceholders(online, "%luckperms_prefix%");
-            String result = "%luckperms_prefix%".equals(lp) ? "" : lp;
-            plugin.prefixCache.put(playerName, result);
-            return result;
-        }
-        return plugin.prefixCache.getOrDefault(playerName, "");
-    }
+    private void updateGlobalMenu(Inventory inventory, String category) {
+        inventory.clear();
 
-    private String resolveTag(String playerName) {
-        Player online = Bukkit.getPlayerExact(playerName);
-        if (online != null && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            String tag = PlaceholderAPI.setPlaceholders(online, "%deluxetags_tag%");
-            String result = "%deluxetags_tag%".equals(tag) ? "" : tag;
-            plugin.tagCache.put(playerName, result);
-            return result;
-        }
-        return plugin.tagCache.getOrDefault(playerName, "");
-    }
+        Material icon = "playtime".equals(category)
+                ? resolveMaterial("CLOCK", Material.STONE)
+                : resolveMaterial("SKELETON_SKULL", Material.STONE);
 
-    private ItemStack createItem(Material mat, int data, String name, String loreLine) {
-        if (mat == null) mat = Material.STONE;
-        if (name == null) name = "&cError: Name Null";
-        if (loreLine == null) loreLine = "";
-
-        ItemStack item = new ItemStack(mat, 1, (short) data);
+        ItemStack item = new ItemStack(icon, 1);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
+            meta.setDisplayName(color("&e&l" + plugin.leaderboardManager.getCategoryDisplayName(category).toUpperCase(Locale.ROOT)));
+
             List<String> lore = new ArrayList<>();
-            if (!loreLine.isEmpty()) {
-                lore.add(ChatColor.translateAlternateColorCodes('&', loreLine));
+            lore.add("");
+            lore.add(color(globalTop10Format.replace("{type}", plugin.leaderboardManager.getCategoryDisplayName(category))));
+            lore.addAll(buildTopLore(plugin.leaderboardManager.getDisplayTop(category, "lifetime", null, 10)));
+            lore.add("");
+            lore.add(color(buildFooterLine(category, "lifetime")));
+
+            meta.setLore(lore);
+            item.setItemMeta(meta);
+        }
+
+        inventory.setItem(22, item);
+        inventory.setItem(getSlot("gui-settings.back.slot", 48), createConfigItem("gui-settings.back"));
+        inventory.setItem(getSlot("gui-settings.period-close.slot", 50), createConfigItem("gui-settings.period-close"));
+    }
+
+    private List<String> buildTopLore(List<LeaderboardManager.DisplayEntry> topEntries) {
+        List<String> lore = new ArrayList<>();
+        for (int index = 0; index < 10; index++) {
+            int rank = index + 1;
+            String rankColor = rank == 1 ? "&a" : (rank == 2 ? "&e" : (rank == 3 ? "&6" : "&f"));
+            if (index < topEntries.size()) {
+                LeaderboardManager.DisplayEntry entry = topEntries.get(index);
+                String playerName = entry.getPlayerName();
+                lore.add(color(rankColor + rank + ". "
+                        + resolvePrefix(playerName)
+                        + "&f" + playerName
+                        + "&r " + resolveTag(playerName)
+                        + "&r &7- &d" + entry.getDisplayValue()));
+            } else {
+                lore.add(color(rankColor + rank + ". &7&o---"));
+            }
+        }
+        return lore;
+    }
+
+    private String buildFooterLine(String category, String period) {
+        if ("daily".equals(period)) {
+            return itemResetFormat.replace("{time}", plugin.leaderboardManager.getDailyCountdown());
+        }
+        if ("weekly".equals(period)) {
+            return itemResetFormat.replace("{time}", plugin.leaderboardManager.getWeeklyCountdown());
+        }
+        if ("monthly".equals(period)) {
+            return itemResetFormat.replace("{time}", plugin.leaderboardManager.getMonthlyCountdown());
+        }
+        if ("elo".equals(category)) {
+            return "&7Current ranked ladder";
+        }
+        if ("playtime".equals(category)) {
+            return "&7Total time spent on server";
+        }
+        return "&7Lifetime leaderboard";
+    }
+
+    private ItemStack createConfigItem(String path) {
+        Material material = resolveMaterial(guiConfig.getString(path + ".material"), Material.STONE);
+        String name = guiConfig.getString(path + ".name", "&cUnknown");
+        String loreLine = guiConfig.getString(path + ".lore", "");
+        return createItem(material, 0, name, loreLine);
+    }
+
+    private ItemStack createItem(Material material, int data, String name, String loreLine) {
+        ItemStack item = new ItemStack(material != null ? material : Material.STONE, 1, (short) data);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(color(name));
+            List<String> lore = new ArrayList<>();
+            if (loreLine != null && !loreLine.isEmpty()) {
+                lore.add(color(loreLine));
             }
             meta.setLore(lore);
             item.setItemMeta(meta);
@@ -348,44 +414,83 @@ public class LeaderboardGUIManager implements Listener {
         return item;
     }
 
+    private Material resolveMaterial(String materialName, Material fallback) {
+        if (materialName == null || materialName.isEmpty()) {
+            return fallback;
+        }
+
+        Material material = Material.getMaterial(materialName);
+        if (material == null && "BED".equalsIgnoreCase(materialName)) {
+            material = Material.getMaterial("RED_BED");
+        }
+        if (material == null && "CLOCK".equalsIgnoreCase(materialName)) {
+            material = Material.getMaterial("WATCH");
+        }
+        if (material == null && "SKELETON_SKULL".equalsIgnoreCase(materialName)) {
+            material = Material.getMaterial("SKULL_ITEM");
+        }
+        return material != null ? material : fallback;
+    }
+
+    private int getSlot(String path, int fallback) {
+        return guiConfig.getInt(path, fallback);
+    }
+
+    private String normalizeKit(String kitName) {
+        if (kitName == null) {
+            return "";
+        }
+        return ChatColor.stripColor(kitName).toLowerCase(Locale.ROOT);
+    }
+
+    private String truncateInventoryTitle(String title) {
+        return title.length() > 32 ? title.substring(0, 32) : title;
+    }
+
     private void startUpdaterTask() {
         new BukkitRunnable() {
             @Override
             public void run() {
-                if (activeMenus.isEmpty()) return;
+                if (activeMenus.isEmpty()) {
+                    return;
+                }
 
-                List<UUID> toRemove = new ArrayList<>();
+                List<UUID> staleMenus = new ArrayList<>();
                 for (Map.Entry<UUID, String> entry : activeMenus.entrySet()) {
                     Player player = Bukkit.getPlayer(entry.getKey());
-
                     if (player == null || !player.isOnline()) {
-                        toRemove.add(entry.getKey());
+                        staleMenus.add(entry.getKey());
                         continue;
                     }
 
-                    Inventory topInv;
+                    Inventory topInventory;
                     try {
                         Object view = player.getClass().getMethod("getOpenInventory").invoke(player);
-                        topInv = (Inventory) view.getClass().getMethod("getTopInventory").invoke(view);
-                    } catch (Exception e) {
-                        toRemove.add(entry.getKey());
+                        topInventory = (Inventory) view.getClass().getMethod("getTopInventory").invoke(view);
+                    } catch (Exception ignored) {
+                        staleMenus.add(entry.getKey());
                         continue;
                     }
 
-                    if (topInv == null || topInv.getSize() != 54) {
+                    if (topInventory == null || topInventory.getSize() != DETAIL_SIZE) {
                         continue;
                     }
 
                     String active = entry.getValue();
-                    if (!active.startsWith("main:")) {
-                        String[] parts = active.split(":");
+                    if (active.startsWith("kits:")) {
+                        String[] parts = active.split(":", 3);
+                        if (parts.length == 3) {
+                            updateKitMenu(topInventory, parts[1], parts[2]);
+                        }
+                    } else if (active.startsWith("global:")) {
+                        String[] parts = active.split(":", 2);
                         if (parts.length == 2) {
-                            updatePeriodMenu(topInv, parts[0], parts[1]);
+                            updateGlobalMenu(topInventory, parts[1]);
                         }
                     }
                 }
 
-                for (UUID uuid : toRemove) {
+                for (UUID uuid : staleMenus) {
                     activeMenus.remove(uuid);
                 }
             }
@@ -399,55 +504,152 @@ public class LeaderboardGUIManager implements Listener {
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player)) return;
+        if (!(event.getWhoClicked() instanceof Player)) {
+            return;
+        }
 
         Player player = (Player) event.getWhoClicked();
         UUID uuid = player.getUniqueId();
-
-        if (activeMenus.containsKey(uuid)) {
-            event.setCancelled(true);
-            if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
-
-            int slot = event.getRawSlot();
-            String active = activeMenus.get(uuid);
-
-            if (active.startsWith("main:")) {
-                int page = 1;
-                try { page = Integer.parseInt(active.split(":")[1]); } catch (Exception ignored) {}
-
-                if (slot == guiConfig.getInt("gui-settings.close.slot", 40)) {
-                    player.closeInventory();
-                } else if (page == 1) {
-                    if (slot == guiConfig.getInt("gui-settings.winstreak-daily.slot", 22)) openPeriodMenu(player, "winstreak", "daily");
-                    else if (slot == guiConfig.getInt("gui-settings.next-page.slot", 41)) openMainMenu(player, 2);
-                } else if (page == 2) {
-                    if (slot == guiConfig.getInt("gui-settings.wins-daily.slot", 20)) openPeriodMenu(player, "wins", "daily");
-                    else if (slot == guiConfig.getInt("gui-settings.wins-weekly.slot", 21)) openPeriodMenu(player, "wins", "weekly");
-                    else if (slot == guiConfig.getInt("gui-settings.wins-monthly.slot", 23)) openPeriodMenu(player, "wins", "monthly");
-                    else if (slot == guiConfig.getInt("gui-settings.wins-lifetime.slot", 24)) openPeriodMenu(player, "wins", "lifetime");
-                    else if (slot == guiConfig.getInt("gui-settings.prev-page.slot", 39)) openMainMenu(player, 1);
-                    else if (slot == guiConfig.getInt("gui-settings.next-page.slot", 41)) openMainMenu(player, 3);
-                } else if (page == 3) {
-                    if (slot == guiConfig.getInt("gui-settings.kills-daily.slot", 20)) openPeriodMenu(player, "kills", "daily");
-                    else if (slot == guiConfig.getInt("gui-settings.kills-weekly.slot", 21)) openPeriodMenu(player, "kills", "weekly");
-                    else if (slot == guiConfig.getInt("gui-settings.kills-monthly.slot", 23)) openPeriodMenu(player, "kills", "monthly");
-                    else if (slot == guiConfig.getInt("gui-settings.kills-lifetime.slot", 24)) openPeriodMenu(player, "kills", "lifetime");
-                    else if (slot == guiConfig.getInt("gui-settings.prev-page.slot", 39)) openMainMenu(player, 2);
-                }
-            } else {
-                if (slot == guiConfig.getInt("gui-settings.back.slot", 48)) {
-                    String cat = active.split(":")[0];
-                    if (cat.equals("kills")) {
-                        openMainMenu(player, 3);
-                    } else if (cat.equals("wins")) {
-                        openMainMenu(player, 2);
-                    } else {
-                        openMainMenu(player, 1);
-                    }
-                } else if (slot == guiConfig.getInt("gui-settings.period-close.slot", 50)) {
-                    player.closeInventory();
-                }
-            }
+        if (!activeMenus.containsKey(uuid)) {
+            return;
         }
+
+        event.setCancelled(true);
+        if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) {
+            return;
+        }
+
+        int slot = event.getRawSlot();
+        String active = activeMenus.get(uuid);
+
+        if (active.startsWith("main:")) {
+            handleMainMenuClick(player, active, slot);
+            return;
+        }
+
+        if (slot == getSlot("gui-settings.back.slot", 48)) {
+            openMainMenu(player, resolveBackPage(active));
+        } else if (slot == getSlot("gui-settings.period-close.slot", 50)) {
+            player.closeInventory();
+        }
+    }
+
+    private void handleMainMenuClick(Player player, String active, int slot) {
+        int page = 1;
+        try {
+            page = Integer.parseInt(active.split(":")[1]);
+        } catch (Exception ignored) {
+        }
+
+        if (slot == getSlot("gui-settings.close.slot", 40)) {
+            player.closeInventory();
+            return;
+        }
+
+        if (page == 1) {
+            if (slot == getSlot("gui-settings.winstreak-daily.slot", 22)) {
+                openPeriodMenu(player, "winstreak", "daily");
+            } else if (slot == getSlot("gui-settings.next-page.slot", 41)) {
+                openMainMenu(player, 2);
+            }
+            return;
+        }
+
+        if (page == 2) {
+            if (slot == getSlot("gui-settings.wins-daily.slot", 20)) {
+                openPeriodMenu(player, "wins", "daily");
+            } else if (slot == getSlot("gui-settings.wins-weekly.slot", 21)) {
+                openPeriodMenu(player, "wins", "weekly");
+            } else if (slot == getSlot("gui-settings.wins-monthly.slot", 23)) {
+                openPeriodMenu(player, "wins", "monthly");
+            } else if (slot == getSlot("gui-settings.wins-lifetime.slot", 24)) {
+                openPeriodMenu(player, "wins", "lifetime");
+            } else if (slot == getSlot("gui-settings.prev-page.slot", 39)) {
+                openMainMenu(player, 1);
+            } else if (slot == getSlot("gui-settings.next-page.slot", 41)) {
+                openMainMenu(player, 3);
+            }
+            return;
+        }
+
+        if (page == 3) {
+            if (slot == getSlot("gui-settings.kills-daily.slot", 20)) {
+                openPeriodMenu(player, "kills", "daily");
+            } else if (slot == getSlot("gui-settings.kills-weekly.slot", 21)) {
+                openPeriodMenu(player, "kills", "weekly");
+            } else if (slot == getSlot("gui-settings.kills-monthly.slot", 23)) {
+                openPeriodMenu(player, "kills", "monthly");
+            } else if (slot == getSlot("gui-settings.kills-lifetime.slot", 24)) {
+                openPeriodMenu(player, "kills", "lifetime");
+            } else if (slot == getSlot("gui-settings.prev-page.slot", 39)) {
+                openMainMenu(player, 2);
+            } else if (slot == getSlot("gui-settings.next-page.slot", 41)) {
+                openMainMenu(player, 4);
+            }
+            return;
+        }
+
+        if (slot == getSlot("gui-settings.deaths-lifetime.slot", 20)) {
+            openGlobalMenu(player, "deaths");
+        } else if (slot == getSlot("gui-settings.playtime-lifetime.slot", 22)) {
+            openGlobalMenu(player, "playtime");
+        } else if (slot == getSlot("gui-settings.elo-lifetime.slot", 24)) {
+            openPeriodMenu(player, "elo", "lifetime");
+        } else if (slot == getSlot("gui-settings.prev-page.slot", 39)) {
+            openMainMenu(player, 3);
+        }
+    }
+
+    private int resolveBackPage(String active) {
+        if (active.startsWith("global:")) {
+            return 4;
+        }
+
+        if (!active.startsWith("kits:")) {
+            return 1;
+        }
+
+        String[] parts = active.split(":", 3);
+        if (parts.length < 2) {
+            return 1;
+        }
+
+        String category = parts[1];
+        if ("wins".equals(category)) {
+            return 2;
+        }
+        if ("kills".equals(category)) {
+            return 3;
+        }
+        if ("elo".equals(category)) {
+            return 4;
+        }
+        return 1;
+    }
+
+    private String resolvePrefix(String playerName) {
+        Player online = Bukkit.getPlayerExact(playerName);
+        if (online != null && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            String rawPrefix = PlaceholderAPI.setPlaceholders(online, "%luckperms_prefix%");
+            String resolved = "%luckperms_prefix%".equals(rawPrefix) ? "" : rawPrefix;
+            plugin.prefixCache.put(playerName, resolved);
+            return resolved;
+        }
+        return plugin.prefixCache.getOrDefault(playerName, "");
+    }
+
+    private String resolveTag(String playerName) {
+        Player online = Bukkit.getPlayerExact(playerName);
+        if (online != null && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            String rawTag = PlaceholderAPI.setPlaceholders(online, "%deluxetags_tag%");
+            String resolved = "%deluxetags_tag%".equals(rawTag) ? "" : rawTag;
+            plugin.tagCache.put(playerName, resolved);
+            return resolved;
+        }
+        return plugin.tagCache.getOrDefault(playerName, "");
+    }
+
+    private String color(String text) {
+        return ChatColor.translateAlternateColorCodes('&', text == null ? "" : text);
     }
 }
