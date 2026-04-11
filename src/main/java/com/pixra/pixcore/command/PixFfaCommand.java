@@ -87,6 +87,33 @@ public class PixFfaCommand implements CommandExecutor {
             return true;
         }
 
+        if (sub.equals("void")) {
+            if (!sender.hasPermission("pixcore.admin")) {
+                sender.sendMessage(ChatColor.RED + "You do not have permission.");
+                return true;
+            }
+            if (args.length < 2) {
+                sender.sendMessage(ChatColor.RED + "Usage: /pixffa void <y>");
+                return true;
+            }
+
+            double value;
+            try {
+                value = Double.parseDouble(args[1]);
+            } catch (NumberFormatException exception) {
+                sender.sendMessage(ChatColor.RED + "Void height must be a valid number.");
+                return true;
+            }
+
+            if (!manager.setVoidYThreshold(value)) {
+                sender.sendMessage(ChatColor.RED + "Failed to update the void height.");
+                return true;
+            }
+
+            sender.sendMessage(ChatColor.GREEN + "[PixFFA] Void height set to " + manager.getVoidYThreshold() + ".");
+            return true;
+        }
+
         if (sub.equals("battlekit")) {
             if (args.length < 2) {
                 sendBattlekitHelp(sender);
@@ -226,6 +253,7 @@ public class PixFfaCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/pixffa leave" + ChatColor.GRAY + " - Leave the FFA arena");
         if (sender.hasPermission("pixcore.admin")) {
             sender.sendMessage(ChatColor.YELLOW + "/pixffa pos" + ChatColor.GRAY + " - Set the FFA respawn position");
+            sender.sendMessage(ChatColor.YELLOW + "/pixffa void <y>" + ChatColor.GRAY + " - Set the FFA void height");
             sender.sendMessage(ChatColor.YELLOW + "/pixffa reload" + ChatColor.GRAY + " - Reload pixffa.yml");
             sendBattlekitHelp(sender);
         }

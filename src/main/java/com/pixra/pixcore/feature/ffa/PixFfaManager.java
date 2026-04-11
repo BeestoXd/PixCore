@@ -200,6 +200,21 @@ public class PixFfaManager implements Listener {
         return true;
     }
 
+    public double getVoidYThreshold() {
+        return voidYThreshold;
+    }
+
+    public boolean setVoidYThreshold(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return false;
+        }
+
+        voidYThreshold = value;
+        config.set("arena.void-y-threshold", value);
+        saveConfigFile();
+        return true;
+    }
+
     public boolean selectBattlekit(String name) {
         String normalized = normalizeKey(name);
         if (normalized.isEmpty() || !hasBattlekit(normalized)) {

@@ -10,7 +10,7 @@ commands:
     permission: pixcore.admin
   pixffa:
     description: Pix FFA commands
-    usage: /pixffa [join|leave|pos|reload|battlekit]
+    usage: /pixffa [join|leave|pos|void|reload|battlekit]
   savelayout:
     description: Save custom layouts manually created while in battle.
     aliases: [ layout, savekit ]
