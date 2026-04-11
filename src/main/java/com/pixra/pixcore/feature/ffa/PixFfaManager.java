@@ -743,6 +743,35 @@ public class PixFfaManager implements Listener {
         return maxDistanceSquared <= 0.0D || player.getLocation().distanceSquared(hub) <= maxDistanceSquared;
     }
 
+    private boolean isNearLocation(Location location, Location target, double radius) {
+        if (location == null || target == null) {
+            return false;
+        }
+        if (location.getWorld() == null || target.getWorld() == null || !location.getWorld().equals(target.getWorld())) {
+            return false;
+        }
+
+        double maxDistanceSquared = radius * radius;
+        return maxDistanceSquared <= 0.0D || location.distanceSquared(target) <= maxDistanceSquared;
+    }
+
+    private boolean shouldLeaveArenaOnTeleport(Player player, Location destination) {
+        if (player == null || destination == null || !isArenaPlayer(player)) {
+            return false;
+        }
+        if (respawningPlayers.contains(player.getUniqueId())) {
+            return false;
+        }
+
+        Location hub = plugin.resolveHubLocation(player);
+        if (!isNearLocation(destination, hub, lobbyHubRadius)) {
+            return false;
+        }
+
+        Location arenaLocation = getResolvedArenaSpawn();
+        return arenaLocation == null || !isNearLocation(destination, arenaLocation, 4.0D);
+    }
+
     private ItemStack createLobbyItem() {
         Material fallbackMaterial = parseMaterial(null, "GOLDEN_SWORD", "GOLD_SWORD", "STONE_SWORD");
         ItemStack item = new ItemStack(lobbyItemMaterial != null ? lobbyItemMaterial : fallbackMaterial);
@@ -1260,10 +1289,21 @@ public class PixFfaManager implements Listener {
 
     @EventHandler
     public void onTeleport(PlayerTeleportEvent event) {
-        if (isArenaPlayer(event.getPlayer()) || isEditingBattlekit(event.getPlayer())) {
+        Player player = event.getPlayer();
+        if (isEditingBattlekit(player)) {
             return;
         }
-        scheduleLobbyItemRefreshSequence(event.getPlayer());
+
+        if (shouldLeaveArenaOnTeleport(player, event.getTo())) {
+            leaveArenaInternal(player, false, true);
+            scheduleLobbyItemRefreshSequence(player);
+            return;
+        }
+
+        if (isArenaPlayer(player)) {
+            return;
+        }
+        scheduleLobbyItemRefreshSequence(player);
     }
 
     @EventHandler
